@@ -1,0 +1,39 @@
+class extends="testbox.system.BaseSpec" {
+    function taskConfig() {
+        return {
+            id: "offline",
+            root: expandPath("/rack-fixtures/rails"),
+            runtime: {
+                env: {
+                    BUNDLE_PATH: expandPath("/rack-bundles/rails"),
+                    BX_RAILS_DATABASE: ":memory:"
+                }
+            }
+        };
+    }
+
+    function run() {
+        describe("Installed Rack module public API", () => {
+            it("keeps ordinary core evaluation available", () => {
+                expect(jrubyEval("40 + 2").value).toBe(42);
+                expect(getBoxRuntime().getModuleService().hasModule("bxjrubyrack")).toBeTrue();
+            });
+
+            it("rejects HTTP app creation without an active gateway", () => {
+                expect(() => jrubyRack(taskConfig())).toThrow();
+                expect(() => jrubyRackGet("unknown")).toThrow();
+            });
+
+            it("runs structured tasks without HTTP hosting", () => {
+                var result = jrubyRackTask(taskConfig(), "fixture_args", ["literal;value", "second"]);
+                expect(result.stdout contains "literal;value|second").toBeTrue();
+            });
+
+            it("propagates task failures and contains normal Ruby exit", () => {
+                expect(() => jrubyRackTask(taskConfig(), "fixture_failure")).toThrow();
+                expect(() => jrubyRackTask(taskConfig(), "fixture_exit")).toThrow();
+                expect(jrubyEval("1").value).toBe(1);
+            });
+        });
+    }
+}

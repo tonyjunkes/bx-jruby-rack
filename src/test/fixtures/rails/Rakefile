@@ -1,0 +1,14 @@
+require_relative 'config/application'
+Rails.application.load_tasks
+
+task :fixture_failure do
+  raise 'intentional task failure'
+end
+
+task :fixture_args, [:first, :second] do |_, args|
+  puts "#{args[:first]}|#{args[:second]}"
+end
+
+task :fixture_exit do
+  exit 7
+end

@@ -1,0 +1,55 @@
+{
+  "name": "BoxLang JRuby Rack Support",
+  "slug": "bx-jruby-rack",
+  "version": "1.0.0",
+  "location": "",
+  "author": "Tony Junkes",
+  "homepage": "https://github.com/tonyjunkes/bx-jruby-rack",
+  "documentation": "https://github.com/tonyjunkes/bx-jruby-rack",
+  "bugs": "https://github.com/tonyjunkes/bx-jruby-rack/issues",
+  "changelog": "https://github.com/tonyjunkes/bx-jruby-rack/blob/main/CHANGELOG.md",
+  "shortDescription": "Run Rack and Ruby framework applications in BoxLang.",
+  "type": "boxlang-modules",
+  "keywords": [
+    "boxlang",
+    "jruby",
+    "ruby",
+    "rack",
+    "sinatra",
+    "rails"
+  ],
+  "boxlang": {
+    "minimumVersion": "1.18.0",
+    "moduleName": "bxjrubyrack"
+  },
+  "dependencies": {
+    "bx-jruby": "1.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "URL": "https://github.com/tonyjunkes/bx-jruby-rack"
+  },
+  "private": false,
+  "license": [
+    {
+      "type": "MIT",
+      "URL": "https://opensource.org/licenses/MIT"
+    }
+  ],
+  "devDependencies": {
+    "testbox": "^7.1.0+20"
+  },
+  "installPaths": {
+    "testbox": "testbox/"
+  },
+  "ignore": [
+    "**/.*",
+    "src/**",
+    "testbox/**",
+    "build/**",
+    "gradle/**",
+    "gradlew*",
+    "*.gradle",
+    "gradle.properties"
+  ]
+}

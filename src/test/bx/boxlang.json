@@ -1,0 +1,8 @@
+{
+  "modulesDirectory": ["${user-dir}/build/consumer/modules"],
+  "mappings": {
+    "/rack-fixtures": "${user-dir}/src/test/fixtures",
+    "/rack-bundles": "${user-dir}/build/bundles",
+    "/testbox": "${user-dir}/testbox"
+  }
+}

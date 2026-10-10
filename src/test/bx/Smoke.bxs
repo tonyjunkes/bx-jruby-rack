@@ -1,0 +1,29 @@
+function check(value, message) {
+    if (!value) {
+        throw(message=message);
+    }
+}
+
+check(getBoxRuntime().getModuleService().hasModule("bxjrubyrack"), "Rack module missing");
+check(jrubyEval("6 * 7").value == 42, "Core evaluation regression");
+config = {
+    id: "offline",
+    root: expandPath("/rack-fixtures/rails"),
+    runtime: {
+        env: {
+            BUNDLE_PATH: expandPath("/rack-bundles/rails"),
+            BX_RAILS_DATABASE: ":memory:"
+        }
+    }
+};
+result = jrubyRackTask(config, "fixture_args", ["first;still-one-arg", "second"]);
+check(result.stdout contains "first;still-one-arg|second", "Structured task arguments: " & JSONSerialize(result));
+caught = false;
+try {
+    jrubyRack(config);
+} catch (any error) {
+    caught = error.message contains "gateway";
+}
+
+check(caught, "CLI HTTP app must fail without a gateway");
+println("Installed Rack CLI consumer passed without Servlet or JRuby on the application classpath");

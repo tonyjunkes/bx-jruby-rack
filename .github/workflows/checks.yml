@@ -1,0 +1,158 @@
+name: Module checks
+
+on:
+  workflow_call:
+    inputs:
+      core_ref:
+        description: bx-jruby tag or ref containing extension API 1
+        type: string
+        default: '1.1.0'
+  workflow_dispatch:
+    inputs:
+      core_ref:
+        description: bx-jruby tag or ref containing extension API 1
+        required: true
+        default: '1.1.0'
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+    working-directory: bx-jruby-rack
+
+jobs:
+  java:
+    name: Java 21 / ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          path: bx-jruby-rack
+      - name: Checkout compatible core
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          repository: tonyjunkes/bx-jruby
+          ref: ${{ inputs.core_ref }}
+          path: bx-jruby
+      - name: Set up Java 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+      - name: Build and verify core
+        working-directory: bx-jruby
+        run: bash ./gradlew build --console=plain
+      - name: Prepare locked Ruby fixtures
+        run: bash ./gradlew prepareFixtures --console=plain
+      - name: Build, validate metadata, run JUnit and installed HTTP consumers
+        run: bash ./gradlew build --console=plain
+      - name: Upload Java test reports
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: java-reports-${{ matrix.os }}
+          path: |
+            bx-jruby/build/reports/tests/
+            bx-jruby-rack/build/reports/tests/
+            bx-jruby-rack/build/test-results/
+      - name: Upload tested Rack distribution
+        uses: actions/upload-artifact@v7
+        if: matrix.os == 'ubuntu-24.04'
+        with:
+          name: bx-jruby-rack-distribution
+          path: |
+            bx-jruby-rack/build/distributions/*.zip
+            bx-jruby-rack/build/distributions/*.zip.sha256
+          if-no-files-found: error
+      - name: Upload tested core dependency
+        uses: actions/upload-artifact@v7
+        if: matrix.os == 'ubuntu-24.04'
+        with:
+          name: bx-jruby-rack-core-distribution
+          path: |
+            bx-jruby/build/distributions/*.zip
+            bx-jruby/build/distributions/*.zip.sha256
+          if-no-files-found: error
+
+  boxlang:
+    name: BoxLang ${{ matrix.boxlang-version }}
+    needs: java
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        boxlang-version: ['1.18.0', latest, snapshot]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          path: bx-jruby-rack
+      - name: Set up BoxLang and CommandBox
+        uses: ortus-boxlang/setup-boxlang@main
+        with:
+          version: ${{ matrix.boxlang-version }}
+          with-commandbox: true
+      - name: Set up Java 21 for fixture preparation
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Download tested Rack distribution
+        uses: actions/download-artifact@v8
+        with:
+          name: bx-jruby-rack-distribution
+          path: bx-jruby-rack/build/distributions
+      - name: Download tested core dependency
+        uses: actions/download-artifact@v8
+        with:
+          name: bx-jruby-rack-core-distribution
+          path: bx-jruby-rack/build/core-distributions
+      - name: Install TestBox
+        run: box install ID=testbox@7.1.0+20 directory=. save=false
+      - name: Verify checksums and install sibling ZIPs
+        run: |
+          version="$(jq -er '.version' box.json)"
+          core_version="$(sed -n 's/^coreVersion=//p' gradle.properties | tr -d '\r')"
+          (cd build/distributions && sha256sum --check "bx-jruby-rack-$version.zip.sha256")
+          (cd build/core-distributions && sha256sum --check "bx-jruby-$core_version.zip.sha256")
+          mkdir -p build/consumer/modules/bx-jruby build/consumer/modules/bx-jruby-rack
+          unzip -q "build/core-distributions/bx-jruby-$core_version.zip" -d build/consumer/modules/bx-jruby
+          unzip -q "build/distributions/bx-jruby-rack-$version.zip" -d build/consumer/modules/bx-jruby-rack
+      - name: Prepare locked Ruby fixtures with tested core
+        run: |
+          jruby_jars=(build/consumer/modules/bx-jruby/libs/jruby-complete-*.jar)
+          test "${#jruby_jars[@]}" -eq 1
+          for fixture in custom sinatra rails; do
+            java -cp "${jruby_jars[0]}" org.jruby.Main src/test/prepare_bundle.rb \
+              "src/test/fixtures/$fixture" "build/bundles/$fixture" frozen
+          done
+      - name: Verify installed CLI consumer
+        run: boxlang --bx-home build/cli/home --bx-config src/test/bx/boxlang.json src/test/bx/Smoke.bxs
+      - name: Run TestBox and verify report totals
+        run: |
+          boxlang --bx-home build/testbox/home --bx-config src/test/bx/boxlang.json \
+            testbox/system/runners/BoxLangRunner.bx --directory=src.test.bx.specs --stream \
+            --write-report=true --write-json-report=true \
+            --reportpath="$GITHUB_WORKSPACE/bx-jruby-rack/build/testbox/report" \
+            --properties-summary=false --stacktrace=short
+          jq -e '.totalFail == 0 and .totalError == 0 and .totalPass > 0' build/testbox/report/report.json
+      - name: Upload TestBox reports
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: testbox-${{ matrix.boxlang-version }}
+          path: bx-jruby-rack/build/testbox/report/

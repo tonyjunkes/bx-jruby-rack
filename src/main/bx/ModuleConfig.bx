@@ -1,0 +1,34 @@
+class {
+    property name="moduleRecord";
+    property name="boxRuntime";
+    property name="log";
+
+    this.title = "bx-jruby-rack";
+    this.author = "Tony Junkes";
+    this.description = "Run Rack and Ruby framework applications in BoxLang.";
+    this.version = "1.0.0";
+    this.mapping = "bxjrubyrack";
+    this.dependencies = ["bxjruby"];
+
+    function configure() {
+        variables.settings = {
+            apps: []
+        };
+    }
+
+    function onLoad() {
+        variables.bridge = createObject(
+            type = "java",
+            className = "modules.bxjrubyrack.RackRuntime",
+            classLoader = moduleRecord.getModuleClassLoader().toClassLoader()
+        );
+        variables.bridge.start(boxRuntime, moduleRecord);
+    }
+
+    function onUnload() {
+        if (structKeyExists(variables, "bridge") && !isNull(variables.bridge)) {
+            variables.bridge.stop(boxRuntime, moduleRecord.name.getName());
+        }
+        variables.bridge = null;
+    }
+}
