@@ -23,6 +23,13 @@ folder, then run `box install`, `box task run`, and `box server start`. The star
 uses `app.libDirs`, explicit servlet mappings and `web.servletPassPredicate=true`
 so extensionless mounts reach the filter. See [deployment](docs/deployment.md).
 
+For fuller standalone applications, use the Rails, Sinatra, and plain Rack folders
+in [bx-jruby-rack-examples](https://github.com/tonyjunkes/bx-jruby-rack-examples).
+Each runs the same service desk with JDBC SQLite, locked gems, explicit setup/reset,
+and a BoxLang landing/status page. Run `box install`, `box task run`, and
+`box server start` from the selected folder. Keep the packaged starter for minimal
+gateway/streaming checks. Web hosting through bx-cli/MiniServer remains unsupported.
+
 For generic Servlet hosts, install into their module directory. Copy the installed
 module's `gateway/` JAR into `WEB-INF/lib` and register
 `modules.bxjrubyrack.gateway.RackGateway` before BoxLang and body-parsing filters.

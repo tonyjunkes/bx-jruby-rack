@@ -1,5 +1,10 @@
 # CommandBox starter
 
+This minimal starter demonstrates gateway setup, a BoxLang page, Ruby, and SSE.
+For complete Rails, Sinatra, and plain Rack service-desk apps with embedded SQLite,
+use [bx-jruby-rack-examples](https://github.com/tonyjunkes/bx-jruby-rack-examples).
+The starter remains supported and packaged with the module.
+
 Requires CommandBox 6.2+, Java 21+, and network access during explicit installation.
 Copy this directory into your application folder, then run:
 

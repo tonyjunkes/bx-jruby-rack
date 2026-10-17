@@ -68,6 +68,11 @@ compatible with heartbeat intervals, and verify delivery through the actual chai
 
 ## MiniServer follow-up
 
+The [standalone framework examples](https://github.com/tonyjunkes/bx-jruby-rack-examples)
+target CommandBox's servlet host. They include explicit local database preparation
+and reset commands; their demo identity selector is not authentication. The packaged
+CommandBox starter remains the smallest gateway and streaming example.
+
 MiniServer has no verified early module hook in its released handler chain. A future
 upstream hook must allow claiming requests before static routing, template lookup
 and form parsing, with untouched bytes, raw URI/query, status/headers, byte writes,

@@ -32,6 +32,17 @@ and visit `/ruby`.
 
 ## CommandBox quick start
 
+For complete, independently runnable **Rails, Sinatra, and plain Rack** service-desk
+applications, see [bx-jruby-rack-examples](https://github.com/tonyjunkes/bx-jruby-rack-examples).
+They demonstrate customers, tickets, assignment, comments, search, and filtering,
+with embedded JDBC SQLite and no separate Ruby installation or database service.
+Each folder includes its own CommandBox setup and a BoxLang landing/status page.
+CommandBox is the supported host; the current gateway does not host web apps through
+bx-cli/MiniServer.
+
+The packaged starter below remains a minimal gateway and streaming example, useful
+for checking host configuration before adding a framework.
+
 Install the module from ForgeBox, then copy its packaged `examples/commandbox` folder
 into a new application directory. The starter's `box.json` installs both sibling modules.
 From the copied directory run:
