@@ -93,6 +93,7 @@ tasks.register('verifyModuleMetadata') {
 
 tasks.register('createModuleStructure', Sync) {
     dependsOn jar, gatewayJar, verifyModuleMetadata
+    inputs.file('examples/commandbox/.gitignore')
     into layout.buildDirectory.dir('module')
     from(tasks.jar) {
         into 'libs'
@@ -115,13 +116,25 @@ tasks.register('createModuleStructure', Sync) {
         into 'examples'
         exclude '**/log/**', '**/tmp/**', '**/vendor/**', '**/.bundle/**'
     }
+    doLast {
+        // Ant's directory defaults omit .gitignore; copy this intentional starter resource explicitly.
+        file("${destinationDir}/examples/commandbox/.gitignore").bytes = file('examples/commandbox/.gitignore').bytes
+    }
 }
 
 tasks.register('moduleZip', Zip) {
     dependsOn createModuleStructure
+    inputs.file('examples/commandbox/.gitignore')
     from(layout.buildDirectory.dir('module'))
     archiveFileName = "bx-jruby-rack-${version}.zip"
     destinationDirectory = layout.buildDirectory.dir('distributions')
+    doLast {
+        // Limit the default-exclude exception to this file and retain reproducible ZIP timestamps.
+        ant.zip(destfile: archiveFile.get().asFile, update: true, modificationtime: '1980-01-01T00:00:00Z') {
+            zipfileset(file: file('examples/commandbox/.gitignore'),
+                fullpath: 'examples/commandbox/.gitignore', defaultexcludes: false)
+        }
+    }
 }
 
 tasks.register('moduleChecksum') {
@@ -180,6 +193,14 @@ tasks.register('prepareConsumer', Sync) {
     }
     from({ zipTree(file(providers.gradleProperty('coreZip').getOrElse("../bx-jruby/build/distributions/bx-jruby-${coreVersion}.zip"))) }) {
         into 'bx-jruby'
+    }
+    doLast {
+        // Match an installer extraction: Sync also filters .gitignore entries from ZIP trees.
+        new java.util.zip.ZipFile(tasks.moduleZip.archiveFile.get().asFile).withCloseable { zip ->
+            zip.getInputStream(zip.getEntry('examples/commandbox/.gitignore')).withCloseable { stream ->
+                file("${destinationDir}/bx-jruby-rack/examples/commandbox/.gitignore").bytes = stream.readAllBytes()
+            }
+        }
     }
 }
 

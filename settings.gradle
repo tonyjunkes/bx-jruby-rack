@@ -1,4 +1,1 @@
-// The packaged CommandBox starter intentionally ships its normal Git ignore file.
-org.apache.tools.ant.DirectoryScanner.removeDefaultExclude('**/.gitignore')
-
 rootProject.name = 'bx-jruby-rack'

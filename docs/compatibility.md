@@ -38,7 +38,7 @@ remaining gaps, proxies, secrets, assets and worker/database sizing.
 Core 1.1.0 and Rack 1.0.0 were published on 2026-10-10. Their release workflows passed
 Windows/Linux checks. This candidate adds Windows local CommandBox/PostgreSQL
 verification and new Windows/Linux startup plus Linux PostgreSQL workflow jobs.
-Those new workflow runs remain pending until changes are submitted upstream.
+Current candidate results and remaining platform checks are recorded in [validation](validation.md).
 
 The manifest pins core 1.2.0 so CommandBox and the OS installer can resolve it. Release
 core first, then check Rack against that tag and publish Rack. New-version ForgeBox
