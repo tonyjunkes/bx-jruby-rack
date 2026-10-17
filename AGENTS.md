@@ -4,6 +4,9 @@ Read `README.md` for setup, `SKILL.md` for integration, `docs/deployment.md` for
 transport/lifecycle contracts, and `docs/capabilities.md` before expanding support.
 `docs/implementation-spec.md` is historical; current code and compatibility docs define the release.
 
+Full framework applications live in [bx-jruby-rack-examples](https://github.com/tonyjunkes/bx-jruby-rack-examples).
+Keep the packaged CommandBox starter as the minimal gateway/streaming smoke example.
+
 ## Build and validation
 
 - Use Java 21. Build the sibling core package before Rack: its exact version is in `gradle.properties`.
