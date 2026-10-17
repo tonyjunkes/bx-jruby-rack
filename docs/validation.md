@@ -6,7 +6,7 @@ their release workflows passed Windows/Linux checks on 2026-10-10.
 
 | Check | Result |
 | --- | --- |
-| Core build/testBox | 31 JUnit tests, 16 TestBox specifications, installed consumers, override/reload checks, Javadoc and interop example |
+| Core build/testBox | 49 JUnit tests, 16 TestBox specifications, installed consumers, override/reload checks, Javadoc and interop example |
 | Rack build/testBox | 6 unit/dependency tests, 14 installed HTTP tests, 4 TestBox specifications, CLI and package checks |
 | PostgreSQL | Real PostgreSQL 17.11: migrations, CRUD, rollback, Rake tasks, HTML/CSRF/uploads and Rails Live cleanup |
 | CommandBox candidate startup | Extracted ZIPs: BoxLang page, Ruby page, SSE and 404 responses for source/config/module paths |
@@ -22,6 +22,9 @@ Core interop checks exercise copied input/ARGV, EOF, binary/invalid encoding rou
 trips, symbols, temporal precision, handle ownership, Bundler conflicts/failure/retry,
 Ruby blocks with keywords, late/cross-thread/reentrant callbacks, standard libraries,
 Java interop and process-exit containment.
+Callback lifecycle checks cover all executable session overloads before locking,
+manager shutdown during successful/failing callbacks, and installed-module reload
+with an active callback and exactly-once exit handlers.
 
 Real HTTP checks cover mounted paths, binary input/output, cookies, CSRF rejection,
 sessions, uploads, static assets, malformed responses, body limits, admission/timeout,
