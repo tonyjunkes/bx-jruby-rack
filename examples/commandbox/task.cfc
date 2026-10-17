@@ -3,9 +3,6 @@ component {
     /** Re-running setup replaces generated config files; Ruby source and server.json stay editable. */
     function run(boolean installGems=true, string bundlePath="") {
         var root = getDirectoryFromPath(getCurrentTemplatePath());
-        if (!fileExists(root & ".gitignore")) {
-            fileCopy(root & "gitignore.template", root & ".gitignore");
-        }
         var modules = root & "modules/";
         var jars = directoryList(modules & "bx-jruby/libs", false, "path", "jruby-complete-*.jar");
         if (arrayLen(jars) != 1) {

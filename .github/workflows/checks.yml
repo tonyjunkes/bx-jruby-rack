@@ -59,11 +59,24 @@ jobs:
       - name: Build, validate metadata, run JUnit and installed HTTP consumers
         run: bash ./gradlew build --console=plain
       - name: Set up CommandBox for the packaged starter
-        uses: ortus-boxlang/setup-boxlang@main
-        with:
-          version: '1.18.0'
-          with-commandbox: true
-          commandbox_version: '6.3.5'
+        run: |
+          commandbox_dir="$(mktemp -d)"
+          platform=bin
+          binary=box
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            platform=win
+            binary=box.exe
+          fi
+          curl --fail --location --retry 3 --output "$commandbox_dir/commandbox.zip" \
+            "https://downloads.ortussolutions.com/ortussolutions/commandbox/6.3.5/commandbox-$platform-6.3.5.zip"
+          unzip -q "$commandbox_dir/commandbox.zip" -d "$commandbox_dir"
+          chmod +x "$commandbox_dir/$binary"
+          "$commandbox_dir/$binary" version
+          binary_path="$commandbox_dir/$binary"
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            binary_path="$(cygpath -w "$binary_path")"
+          fi
+          echo "BOX_BINARY=$binary_path" >> "$GITHUB_ENV"
       - name: Set up Node for the startup smoke test
         uses: actions/setup-node@v6
         with:
@@ -188,7 +201,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d bx_rack_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5

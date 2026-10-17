@@ -16,3 +16,7 @@ jobs:
   checks:
     name: Verify module
     uses: ./.github/workflows/checks.yml
+    with:
+      # Companion core work can be verified before its release tag exists.
+      # Release checks always use checks.yml's pinned default instead.
+      core_ref: ${{ vars.BX_JRUBY_PR_CORE_REF || '1.2.0' }}

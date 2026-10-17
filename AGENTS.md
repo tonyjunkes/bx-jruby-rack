@@ -13,6 +13,7 @@ transport/lifecycle contracts, and `docs/capabilities.md` before expanding suppo
 - `node scripts/commandbox-smoke.mjs` starts extracted candidates on CommandBox and checks Ruby, BoxLang, SSE and public-root isolation.
 - PostgreSQL tests read `BX_RAILS_DATABASE_URL`; Linux CI supplies a PostgreSQL service. SQLite remains the default.
 - Workflow checks default to core tag 1.2.0. Release core first; keep Rack's manifest dependency concrete and metadata consistent.
+- PR checks alone accept the repository variable BX_JRUBY_PR_CORE_REF for companion core work; clear it after core publication and re-run against the tag. Release checks ignore this override.
 - Keep the manifest's compiled GitHub ZIP location versioned; the release asset must exist before ForgeBox publication.
 
 | Verified command | Purpose |

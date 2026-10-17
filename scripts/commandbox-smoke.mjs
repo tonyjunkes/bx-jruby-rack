@@ -9,6 +9,7 @@ const root = path.resolve('build', 'commandbox-smoke-' + process.pid);
 const candidate = path.resolve('build/consumer/modules/bx-jruby-rack');
 fs.mkdirSync(root, { recursive: true });
 fs.cpSync(path.join(candidate, 'examples/commandbox'), root, { recursive: true });
+assert.ok(fs.existsSync(path.join(root, '.gitignore')), 'packaged starter .gitignore');
 for (const name of ['bx-jruby', 'bx-jruby-rack']) {
     fs.cpSync(path.resolve('build/consumer/modules', name), path.join(root, 'modules', name), { recursive: true });
 }

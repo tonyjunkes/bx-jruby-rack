@@ -14,6 +14,8 @@ The root package installs both modules from ForgeBox as siblings. Setup installs
 the locked app bundle using core's bundled JRuby and generates absolute host paths.
 Run setup again after moving the application. It replaces config/boxlang.json and
 config/gateway.xml. Edit task.cfc for different mounts or app settings.
+The packaged .gitignore excludes installed modules, gems and generated configuration;
+keep it when copying the starter into your project.
 
 The starter pins `boxlang@1.18.6+62` (BoxLang runtime 1.18.0). Its
 `web.servletPassPredicate=true` sends extensionless Ruby routes through the gateway.

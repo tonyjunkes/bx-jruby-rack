@@ -2,6 +2,9 @@
 
 ## 1.1.0 (unreleased)
 
+- Keep the starter's .gitignore through ForgeBox installation without a duplicate template.
+- Fix Windows CommandBox setup and allow PR checks to select a companion core commit while releases retain the exact core tag.
+
 - Pin core 1.2.0 and move BIF/lifecycle glue to native BoxLang.
 - Share core Bundler initialization and package Rake bootstrap as Ruby source.
 - Add callable Rack bodies, SSE flushing, stream status and cooperative drain/disconnect cleanup.

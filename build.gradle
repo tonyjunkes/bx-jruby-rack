@@ -145,6 +145,11 @@ tasks.register('verifyPackage') {
     dependsOn moduleZip
 
     doLast {
+        new java.util.zip.ZipFile(tasks.moduleZip.archiveFile.get().asFile).withCloseable { zip ->
+            if (zip.getEntry('examples/commandbox/.gitignore') == null) {
+                throw new GradleException('The CommandBox starter must include its .gitignore')
+            }
+        }
         def jars = fileTree('build/module').matching {
             include '**/*.jar'
         }.files

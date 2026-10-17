@@ -6,7 +6,7 @@ their release workflows passed Windows/Linux checks on 2026-10-10.
 
 | Check | Result |
 | --- | --- |
-| Core build/testBox | 29 JUnit tests, 16 TestBox specifications, installed consumers, override/reload checks, Javadoc and interop example |
+| Core build/testBox | 31 JUnit tests, 16 TestBox specifications, installed consumers, override/reload checks, Javadoc and interop example |
 | Rack build/testBox | 6 unit/dependency tests, 14 installed HTTP tests, 4 TestBox specifications, CLI and package checks |
 | PostgreSQL | Real PostgreSQL 17.11: migrations, CRUD, rollback, Rake tasks, HTML/CSRF/uploads and Rails Live cleanup |
 | CommandBox candidate startup | Extracted ZIPs: BoxLang page, Ruby page, SSE and 404 responses for source/config/module paths |
@@ -36,9 +36,17 @@ smoke runs retain their setup/start/stop logs in `build/commandbox-smoke-*`.
 
 ## Remaining external verification
 
-The candidate's new Windows/Linux CommandBox jobs and Linux PostgreSQL job are wired
-into the reusable checks workflow. Their remote runs remain pending until these changes
-are submitted upstream. This Windows workspace has no installed WSL distribution.
+The candidate's Windows/Linux CommandBox jobs and Linux PostgreSQL job run in the
+reusable checks workflow. The first PR run could not check out the unreleased core
+tag. A companion-core run also exposed a Windows installer archive mismatch and a
+transient Maven Central HTTP 403; workflow fixes and a fresh run address those separately.
+This Windows workspace has no installed WSL distribution.
+
+For paired core/Rack development, set the Rack repository variable
+`BX_JRUBY_PR_CORE_REF` to the reviewed companion core commit. Only PR checks read it;
+manual checks accept `core_ref`, and release checks keep the exact default tag.
+After core 1.2.0 is published, remove the variable and re-run Rack PR checks against
+the tag before merging. Neither override changes the package's exact dependency pin.
 
 Release core 1.2.0 first, run Rack against that tag, then publish Rack 1.1.0. Remote
 installation of these new ForgeBox versions must follow publication. Candidate ZIP

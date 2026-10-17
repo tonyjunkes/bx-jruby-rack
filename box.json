@@ -44,6 +44,7 @@
   },
   "ignore": [
     "**/.*",
+    "!/examples/commandbox/.gitignore",
     "src/**",
     "testbox/**",
     "build/**",
