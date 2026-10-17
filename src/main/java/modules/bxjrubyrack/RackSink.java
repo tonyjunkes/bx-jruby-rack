@@ -27,6 +27,25 @@ public interface RackSink {
      */
     void write(byte[] bytes) throws IOException;
 
+    /** Marks output as streaming so application drain may cooperatively stop subsequent I/O. */
+    default void startStreaming() {}
+
+    /**
+     * Flushes partial output without ending the response.
+     * @throws IOException if output cannot be flushed
+     */
+    default void flush() throws IOException {
+        finish();
+    }
+
+    /**
+     * Reports whether streaming output has been closed or cancelled by drain.
+     * @return true when further stream I/O must fail
+     */
+    default boolean isClosed() {
+        return false;
+    }
+
     /**
      * Flushes the completed finite response to the client.
      *

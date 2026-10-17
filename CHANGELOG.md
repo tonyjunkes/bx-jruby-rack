@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 (unreleased)
+
+- Pin core 1.2.0 and move BIF/lifecycle glue to native BoxLang.
+- Share core Bundler initialization and package Rake bootstrap as Ruby source.
+- Add callable Rack bodies, SSE flushing, stream status and cooperative drain/disconnect cleanup.
+- Add a ForgeBox-based CommandBox starter and cross-platform startup smoke checks.
+- Fix parent-loaded gateway access to BoxLang; preserve version keys and environment key case in detached snapshots.
+- Expand Sinatra/Rails HTML, CSRF, upload, asset and streaming coverage; add PostgreSQL 17 CI.
+- Update capability/deployment guides, examples, skills and contributor instructions.
+- Point ForgeBox at the compiled GitHub release ZIP and upload that asset before publishing metadata.
+
 ## 1.0.0
 
 - Detached app configuration snapshots for explicit tasks and app replacement.

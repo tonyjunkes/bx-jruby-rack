@@ -12,3 +12,13 @@ end
 task :fixture_exit do
   exit 7
 end
+
+task fixture_transaction: :environment do
+  original = Note.count
+  Note.transaction do
+    Note.create!(text: 'rolled back')
+    raise ActiveRecord::Rollback
+  end
+  raise 'rollback did not restore row count' unless Note.count == original
+  puts 'transaction rolled back'
+end

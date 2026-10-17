@@ -73,11 +73,13 @@ class RackConfigTest {
      */
     @Test
     void configurationSnapshotsAreDetachedAndReusable() {
-        var resolved = config(Map.of("runtime", Map.of("env", Map.of("APP_VALUE", "original"),
+        var resolved = config(Map.of("runtime", Map.of("env", Map.of("APP_VALUE", "original", "Mixed", "upper", "mixed", "lower"),
             "loadPaths", List.of("lib"))));
         var snapshot = resolved.toStruct();
         assertEquals(resolved, RackConfig.resolve(snapshot, root));
         var runtime = (ortus.boxlang.runtime.types.IStruct) snapshot.get("runtime");
+        assertEquals("upper", ((ortus.boxlang.runtime.types.IStruct) runtime.get("env")).get("Mixed"));
+        assertEquals("lower", ((ortus.boxlang.runtime.types.IStruct) runtime.get("env")).get("mixed"));
         ((ortus.boxlang.runtime.types.IStruct) runtime.get("env")).put("APP_VALUE", "changed");
         ((List<?>) runtime.get("loadPaths")).clear();
         assertEquals("original", ((Map<?, ?>) resolved.runtime().get("env")).get("APP_VALUE"));

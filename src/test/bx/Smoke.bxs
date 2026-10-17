@@ -8,7 +8,7 @@ check(getBoxRuntime().getModuleService().hasModule("bxjrubyrack"), "Rack module 
 check(jrubyEval("6 * 7").value == 42, "Core evaluation regression");
 config = {
     id: "offline",
-    root: expandPath("/rack-fixtures/rails"),
+    root: "../fixtures/rails",
     runtime: {
         env: {
             BUNDLE_PATH: expandPath("/rack-bundles/rails"),

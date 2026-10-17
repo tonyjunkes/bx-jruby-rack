@@ -58,6 +58,9 @@ GEM
       timeout (>= 0.4.0)
     activerecord-jdbc-adapter (72.1-java)
       activerecord (~> 7.2.2)
+    activerecord-jdbcpostgresql-adapter (72.1-java)
+      activerecord-jdbc-adapter (= 72.1)
+      jdbc-postgres (>= 9.4, < 43)
     activerecord-jdbcsqlite3-adapter (72.1-java)
       activerecord-jdbc-adapter (= 72.1)
       jdbc-sqlite3 (~> 3.8, < 4)
@@ -100,6 +103,7 @@ GEM
       rdoc (>= 4.0.0)
       reline (>= 0.4.2)
     jar-dependencies (0.6.1-java)
+    jdbc-postgres (42.7.11)
     jdbc-sqlite3 (3.46.1.1)
     logger (1.7.0)
     loofah (2.25.2)
@@ -194,6 +198,7 @@ PLATFORMS
   universal-java
 
 DEPENDENCIES
+  activerecord-jdbcpostgresql-adapter (= 72.1)
   activerecord-jdbcsqlite3-adapter (= 72.1)
   irb (= 1.13.1)
   rack (= 3.2.7)
@@ -213,6 +218,7 @@ CHECKSUMS
   activemodel (7.2.4) sha256=c6a2f2290fdf8728b596fba1fc528e65852c6e015ccc385ddf0f93c455588773
   activerecord (7.2.4) sha256=b3549deb6a4c469e0cb652194cf566b6010f1f1796404b4213d8b47469d411e5
   activerecord-jdbc-adapter (72.1-java) sha256=4487cb4606b5d76913b5abaaf681ef21b7aa9478ed201918f48da6b3f7fcec70
+  activerecord-jdbcpostgresql-adapter (72.1-java) sha256=1f71c5765b43744148fe955cb86350a75d41eb9d747d3e7b5b5698948187962a
   activerecord-jdbcsqlite3-adapter (72.1-java) sha256=f0b2c95c02b32cf6d7887580b7e2a2c79bdb4ff2a10151d5fc650a70cf75f8cd
   activestorage (7.2.4) sha256=cc82c0d1c50cfcd52197067a61ca16e5b3716c0ac2eba666b30449ba3532bddc
   activesupport (7.2.4) sha256=b97027b31e111675dba67b86edcd589acc25a0dddf8eecacca18d33a703a0788
@@ -233,6 +239,7 @@ CHECKSUMS
   io-console (0.9.4-java) sha256=789188c38b937fc2d04400e35fd3b2838ffdf061e846571e51524036bc1bc185
   irb (1.13.1) sha256=aa552f30b33f15615cff4ca8d04bace0bdd442777efb5187d9a621707889f292
   jar-dependencies (0.6.1-java) sha256=2746643482d139fd9cecb524b57df63b71d9b5d734c7275171701201e3164f23
+  jdbc-postgres (42.7.11) sha256=261cb7b1ec77c299fc6c1dfa79947a6720c1d96ecf54d79e794187be191702bd
   jdbc-sqlite3 (3.46.1.1) sha256=2498fea7d37c0d51c6bad1b95ffc909173c014ba6bd36825f37910113d0230cf
   logger (1.7.0) sha256=196edec7cc44b66cfb40f9755ce11b392f21f7967696af15d274dde7edff0203
   loofah (2.25.2) sha256=2007f746959ac65552456e04b433e83deb22759ab38c838b4445c70e43425918

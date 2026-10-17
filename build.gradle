@@ -84,6 +84,10 @@ tasks.register('verifyModuleMetadata') {
         if (manifest.dependencies['bx-jruby'] != requiredCore) {
             throw new GradleException('The bx-jruby dependency must match the coreVersion compatibility baseline')
         }
+        def expectedLocation = "https://github.com/tonyjunkes/bx-jruby-rack/releases/download/${releaseVersion}/bx-jruby-rack-${releaseVersion}.zip"
+        if (manifest.location != expectedLocation) {
+            throw new GradleException('ForgeBox location must point to this version of the compiled GitHub release ZIP')
+        }
     }
 }
 
@@ -98,11 +102,14 @@ tasks.register('createModuleStructure', Sync) {
     }
     from('src/main/bx')
     from('.') {
-        include 'box.json', 'README.md', 'SKILL.md', 'LICENSE', 'CHANGELOG.md', 'THIRD-PARTY-NOTICES.md'
+        include 'box.json', 'README.md', 'SKILL.md', 'LICENSE', 'CHANGELOG.md', 'THIRD-PARTY-NOTICES.md', 'AGENTS.md'
     }
     from('docs') {
         into 'docs'
         exclude 'implementation-spec.md'
+    }
+    from('examples') {
+        into 'examples'
     }
     from('src/test/fixtures') {
         into 'examples'
@@ -218,6 +225,22 @@ tasks.register('benchmark', Test) {
         events 'failed', 'passed'
         exceptionFormat = 'full'
     }
+}
+
+// Installed implementations are intentionally absent from the host classpath. Declare
+// their archives and Ruby fixtures explicitly so protocol/core changes rerun acceptance tests.
+tasks.withType(Test).configureEach {
+    inputs.file(tasks.named('moduleZip', Zip).flatMap { it.archiveFile })
+    inputs.file(providers.gradleProperty('coreZip').map { file(it) }
+        .orElse(provider { file("../bx-jruby/build/distributions/bx-jruby-${coreVersion}.zip") }))
+    inputs.files(fileTree('src/test/fixtures') {
+        exclude '**/log/**', '**/tmp/**', '**/vendor/**', '**/.bundle/**'
+    })
+}
+
+tasks.named('httpTest') {
+    // External database state is not a cacheable test input.
+    outputs.upToDateWhen { !providers.environmentVariable('BX_RAILS_DATABASE_URL').isPresent() }
 }
 
 // Network access occurs only in this explicitly invoked preparation task.

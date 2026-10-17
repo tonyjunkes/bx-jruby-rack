@@ -15,6 +15,7 @@ public final class RackApp implements AutoCloseable {
     private final Semaphore admission;
     private final List<Thread> threads = new ArrayList<>();
     private final AtomicInteger active = new AtomicInteger();
+    private final AtomicInteger streams = new AtomicInteger();
     private final LongAdder requests = new LongAdder();
     private final LongAdder failures = new LongAdder();
     private final LongAdder bytes = new LongAdder();
@@ -96,7 +97,7 @@ public final class RackApp implements AutoCloseable {
                 BRIDGE,
                 Map.of(
                     "bx_boot",
-                    Map.of("bundler", config.bundler(), "rackup", config.rackup().toString())
+                    Map.of("rackup", config.rackup().toString())
                 )
             );
             log(boot);
@@ -155,6 +156,11 @@ public final class RackApp implements AutoCloseable {
      */
     public IStruct status() {
         if (state.equals("DRAINING") && threads.stream().noneMatch(Thread::isAlive)) state = "CLOSED";
+        IStruct versionSnapshot = null;
+        if (versions != null) {
+            versionSnapshot = new Struct();
+            versionSnapshot.putAll(versions);
+        }
         return Struct.of(
             "id",
             config.id(),
@@ -166,6 +172,8 @@ public final class RackApp implements AutoCloseable {
             threads.size(),
             "active",
             active.get(),
+            "streams",
+            streams.get(),
             "queued",
             queue.size(),
             "requests",
@@ -187,7 +195,7 @@ public final class RackApp implements AutoCloseable {
             "bootMs",
             bootMs,
             "versions",
-            versions == null ? null : Struct.fromMap(versions)
+            versionSnapshot
         );
     }
 
@@ -221,7 +229,8 @@ public final class RackApp implements AutoCloseable {
         execute(session -> {
             try (var body = RequestBody.read(request.input(), request.contentLength(), config)) {
                 inputBytes.add(body.length());
-                var sink = request.sink();
+                var sink = new ManagedSink(request.sink(),
+                    () -> !state.equals("READY") && !state.equals("STARTING"), streams);
                 RuntimeException failure = null;
                 try {
                     var result = session.eval(
@@ -236,10 +245,13 @@ public final class RackApp implements AutoCloseable {
                     throw error;
                 } finally {
                     bytes.add(sink.bytes());
+                    sink.close();
                     try {
                         session.clearRequestBindings();
                     } catch (RuntimeException error) {
-                        if (failure == null) throw error;
+                        if (failure == null) {
+                            throw error;
+                        }
                         failure.addSuppressed(error);
                     }
                 }
@@ -257,8 +269,12 @@ public final class RackApp implements AutoCloseable {
     private void execute(Work work) {
         Job job;
         synchronized (this) {
-            if (!state.equals("READY")) throw unavailable("APP_CLOSED");
-            if (!admission.tryAcquire()) throw unavailable("QUEUE_FULL");
+            if (!state.equals("READY")) {
+                throw unavailable("APP_CLOSED");
+            }
+            if (!admission.tryAcquire()) {
+                throw unavailable("QUEUE_FULL");
+            }
             job = new Job(work);
             queue.add(job);
         }
@@ -284,7 +300,9 @@ public final class RackApp implements AutoCloseable {
                 } catch (InterruptedException error) {
                     interrupted = true;
                 } catch (ExecutionException error) {
-                    if (error.getCause() instanceof RuntimeException runtime) throw runtime;
+                    if (error.getCause() instanceof RuntimeException runtime) {
+                        throw runtime;
+                    }
                     throw new IllegalStateException("Rack request failed", error.getCause());
                 }
             }

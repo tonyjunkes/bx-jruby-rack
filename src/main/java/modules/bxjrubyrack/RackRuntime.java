@@ -33,9 +33,13 @@ public final class RackRuntime {
     private RackRuntime(BoxRuntime runtime, ModuleRecord record) {
         core = new CoreBridge(runtime);
         Object configured = record.settings.get("apps");
-        if (!(configured instanceof Iterable<?> list)) throw RackConfig.config("settings.apps must be an array");
+        if (!(configured instanceof Iterable<?> list)) {
+            throw RackConfig.config("settings.apps must be an array");
+        }
         for (Object item : list) {
-            if (!(item instanceof Map<?, ?> map)) throw RackConfig.config("Each declared app must be a struct");
+            if (!(item instanceof Map<?, ?> map)) {
+                throw RackConfig.config("Each declared app must be a struct");
+            }
             var c = RackConfig.resolve(map, Path.of(".").toAbsolutePath());
             Object root = map.get(Key.of("root"));
             if (root == null) root = map.get("root");
@@ -64,11 +68,10 @@ public final class RackRuntime {
     }
 
     /**
-     * Drains this activation, unregisters its core shutdown hook, and removes only BIFs owned by the named
-     * module.
+     * Drains this activation and unregisters its core shutdown hook. ModuleConfig cleans up owned BIFs.
      *
      * @param runtime the active BoxLang runtime
-     * @param name the module name whose BIFs may be unregistered
+     * @param name the module name, retained for lifecycle compatibility
      */
     public static void stop(BoxRuntime runtime, String name) {
         RackRuntime current = active;
@@ -81,11 +84,7 @@ public final class RackRuntime {
                 throw new IllegalStateException(e);
             }
         }
-        for (String bif : List.of("jrubyRack", "jrubyRackGet", "jrubyRackTask")) {
-            var descriptor = runtime.getFunctionService().getGlobalFunction(bif);
-            if (descriptor != null && name.equalsIgnoreCase(descriptor.module))
-                runtime.getFunctionService().unregisterGlobalFunction(Key.of(bif));
-        }
+
     }
 
     /**
@@ -109,10 +108,14 @@ public final class RackRuntime {
      * @throws RackException if the scope is invalid, already registered, or an app is invalid
      */
     public static void openGateway(String scope) {
-        if (scope == null || !scope.matches("[A-Za-z0-9_.-]+")) throw RackConfig.config("Invalid gateway scope");
+        if (scope == null || !scope.matches("[A-Za-z0-9_.-]+")) {
+            throw RackConfig.config("Invalid gateway scope");
+        }
         var current = current();
         synchronized (current) {
-            if (!current.scopes.add(scope)) throw RackConfig.config("Gateway scope already registered: " + scope);
+            if (!current.scopes.add(scope)) {
+                throw RackConfig.config("Gateway scope already registered: " + scope);
+            }
             try {
                 for (var config : current.declared) {
                     if (config.scope().equals(scope)) current.create(config);
@@ -200,7 +203,9 @@ public final class RackRuntime {
      */
     public static RackApp get(String id, String scope) {
         RackApp app = current().apps.get(scope + ":" + id);
-        if (app == null) throw new RackException("APP_NOT_FOUND", 404, "No Rack app with id in this scope");
+        if (app == null) {
+            throw new RackException("APP_NOT_FOUND", 404, "No Rack app with id in this scope");
+        }
         return app;
     }
 
@@ -244,37 +249,25 @@ public final class RackRuntime {
     public static IStruct task(IBoxContext context, Map<?, ?> config, String task, List<?> args) {
         var current = current();
         var resolved = RackConfig.resolve(config, FileSystemUtil.expandPath(context, ".").absolutePath());
-        if (task.isBlank()) throw RackConfig.config("Task name is required");
+        if (task.isBlank()) {
+            throw RackConfig.config("Task name is required");
+        }
         for (Object arg : args) if (!(arg instanceof String)) throw RackConfig.config("Task arguments must be strings");
         var result =
                 new FutureTask<IStruct>(() -> {
                     try (var session = current.core.session(resolved)) {
                         return session.eval(
-                            """
-                            module Kernel
-                                def exit!(*); raise 'exit! is unsupported in embedded Rack tasks'; end
-                                module_function :exit!
-                            end
-                            begin
-                                require 'bundler/setup' if bx_bundle
-                                require 'rake'
-                                Rake.application.init('rake', [])
-                                load File.join(Dir.pwd, 'Rakefile')
-                                Rake.application.load_imports
-                                Rake::Task[bx_task].invoke(*bx_args)
-                                nil
-                            rescue SystemExit => error
-                                raise "Embedded task attempted to exit with status #{error.status}"
-                            end
-                            """,
-                            Map.of("bx_bundle", resolved.bundler(), "bx_task", task, "bx_args", args)
+                            taskSource(),
+                            Map.of("bx_task", task, "bx_args", args)
                         );
                     }
                 });
         Thread thread = new Thread(result, "bx-rack-task-" + resolved.id());
         thread.setDaemon(true);
         synchronized (current) {
-            if (current.closed) throw new RackException("MODULE_CLOSED", 503, "Rack module is closed");
+            if (current.closed) {
+                throw new RackException("MODULE_CLOSED", 503, "Rack module is closed");
+            }
             current.tasks.add(thread);
             thread.start();
         }
@@ -317,4 +310,17 @@ public final class RackRuntime {
         apps.clear();
         if (interrupted) Thread.currentThread().interrupt();
     }
+
+    /**
+     * Loads the packaged Ruby task bootstrap without exposing JRuby implementation types.
+     * @return the Ruby source
+     */
+    private static String taskSource() {
+        try (var input = RackRuntime.class.getResourceAsStream("/modules/bxjrubyrack/task.rb")) {
+            return new String(java.util.Objects.requireNonNull(input).readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("Rack task bootstrap is missing", error);
+        }
+    }
+
 }

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Sinatra form</title></head><body>
+<h1>Sinatra in BoxLang</h1>
+<p><%= Rack::Utils.escape_html(@saved.to_s) %></p>
+<form method="post" action="<%= request.script_name %>/form">
+<input type="hidden" name="authenticity_token" value="<%= @token %>">
+<label>Text <input name="text"></label><button>Save in session</button>
+</form>
+<form method="post" enctype="multipart/form-data" action="<%= request.script_name %>/upload">
+<input type="hidden" name="authenticity_token" value="<%= @token %>">
+<label>File <input type="file" name="upload"></label><button>Upload</button>
+</form></body></html>

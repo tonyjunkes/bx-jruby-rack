@@ -28,10 +28,66 @@ class FailingBody < FixtureBody
   end
 end
 
+class StreamingBody
+  def initialize(env)
+    @env = env
+  end
+
+  def call(stream)
+    @stream = stream
+    if @env['PATH_INFO'] == '/stream-half'
+      stream.write('half')
+      stream.close_write
+      raise 'write close closed both sides' if stream.closed?
+      raise 'read after write close' unless stream.read == 'request'
+      stream.close_read
+      raise 'not fully closed' unless stream.closed?
+      return
+    end
+    if @env['PATH_INFO'] == '/stream-io'
+      stream << stream.read
+      stream.close_read
+      stream.flush
+      stream.close_write
+      raise 'not closed' unless stream.closed?
+      return
+    end
+    stream.write("data: first\n\n")
+    stream.flush
+    if @env['PATH_INFO'] == '/stream-gated'
+      File.write(ENV.fetch('BX_STREAM_GATE') + '.started', 'yes')
+      sleep 0.01 while File.exist?(ENV.fetch('BX_STREAM_GATE'))
+      stream << "data: second\n\n"
+    else
+      loop do
+        stream << "data: #{'x' * 8192}\n\n"
+        stream.flush
+        sleep 0.01
+      end
+    end
+  end
+
+  def close
+    raise 'server retained an open stream after consumption' if @stream && !@stream.closed?
+    File.write(ENV.fetch('BX_STREAM_CLOSED'), 'closed') if ENV['BX_STREAM_CLOSED']
+  end
+end
+
+class BothBody < FixtureBody
+  def call(*)
+    raise 'call must not be used when each exists'
+  end
+end
+
 counter = 0
 app = lambda do |env|
   counter += 1
   case env['PATH_INFO']
+  when '/stream-gated', '/stream-long', '/stream-io', '/stream-half'
+    env['rack.response_finished'] << ->(*) { File.write(ENV.fetch('BX_STREAM_FINISHED'), 'finished') if ENV['BX_STREAM_FINISHED'] }
+    [200, {'content-type' => env['PATH_INFO'] == '/stream-io' ? 'application/octet-stream' : 'text/event-stream'}, StreamingBody.new(env)]
+  when '/both'
+    [200, {'content-type' => ['text/plain']}, BothBody.new(['enumerable'])]
   when '/invalid-header'
     [200, {'content-type' => "text/plain\r\nx-injected: yes"}, FixtureBody.new(['secret'])]
   when '/invalid-uppercase'
@@ -73,7 +129,7 @@ app = lambda do |env|
     env['rack.response_finished'] << ->(_, _, _, error) { ($finished ||= []) << "second:#{error.nil?}" }
     [200, {'content-type' => 'text/plain'}, FixtureBody.new(['hooks'])]
   when '/callable'
-    [200, {'content-type' => 'text/plain'}, ->(stream) { stream.write('unsupported') }]
+    [200, {'content-type' => 'text/plain'}, ->(stream) { stream.write('callable') }]
   when '/binary'
     [200, {'content-type' => 'application/octet-stream'}, FixtureBody.new(["\x00\xff\x80hello".b])]
   when '/echo'

@@ -1,8 +1,8 @@
 {
   "name": "BoxLang JRuby Rack Support",
   "slug": "bx-jruby-rack",
-  "version": "1.0.0",
-  "location": "",
+  "version": "1.1.0",
+  "location": "https://github.com/tonyjunkes/bx-jruby-rack/releases/download/1.1.0/bx-jruby-rack-1.1.0.zip",
   "author": "Tony Junkes",
   "homepage": "https://github.com/tonyjunkes/bx-jruby-rack",
   "documentation": "https://github.com/tonyjunkes/bx-jruby-rack",
@@ -23,7 +23,7 @@
     "moduleName": "bxjrubyrack"
   },
   "dependencies": {
-    "bx-jruby": "1.1.0"
+    "bx-jruby": "1.2.0"
   },
   "repository": {
     "type": "git",

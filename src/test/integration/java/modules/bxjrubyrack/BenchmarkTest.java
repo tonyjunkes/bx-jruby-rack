@@ -40,11 +40,11 @@ class BenchmarkTest {
                 Object app = InstalledHttpTest.createApp("bench" + workers, Map.of("workers", workers));
                 try {
                     String path = "/bench" + workers + "/state";
-                    for (int i = 0; i < 16; i++)
+                    for (int i = 0; i < 256; i++)
                         assertEquals(200, InstalledHttpTest.request(path, "GET", new byte[0]).statusCode());
                     long heap = usedHeap();
                     long start = System.nanoTime();
-                    for (int batch = 0; batch < 10; batch++) {
+                    for (int batch = 0; batch < 400; batch++) {
                         var pending = new ArrayList<java.util.concurrent.CompletableFuture<HttpResponse<byte[]>>>();
                         for (int i = 0; i < 8; i++)
                             pending.add(
@@ -65,10 +65,10 @@ class BenchmarkTest {
                             + heap
                             + ",\"usedHeapDeltaBytes\":"
                             + (heap - before)
-                            + ",\"requests\":80,\"concurrency\":8,\"seconds\":"
+                            + ",\"requests\":3200,\"concurrency\":8,\"seconds\":"
                             + seconds
                             + ",\"requestsPerSecond\":"
-                            + 80 / seconds
+                            + 3200 / seconds
                             + "}"
                     );
                 } finally {

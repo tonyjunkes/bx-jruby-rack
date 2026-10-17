@@ -6,13 +6,13 @@ on:
       core_ref:
         description: bx-jruby tag or ref containing extension API 1
         type: string
-        default: '1.1.0'
+        default: '1.2.0'
   workflow_dispatch:
     inputs:
       core_ref:
         description: bx-jruby tag or ref containing extension API 1
         required: true
-        default: '1.1.0'
+        default: '1.2.0'
 
 permissions:
   contents: read
@@ -58,6 +58,24 @@ jobs:
         run: bash ./gradlew prepareFixtures --console=plain
       - name: Build, validate metadata, run JUnit and installed HTTP consumers
         run: bash ./gradlew build --console=plain
+      - name: Set up CommandBox for the packaged starter
+        uses: ortus-boxlang/setup-boxlang@main
+        with:
+          version: '1.18.0'
+          with-commandbox: true
+          commandbox_version: '6.3.5'
+      - name: Set up Node for the startup smoke test
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - name: Verify packaged CommandBox startup
+        run: node scripts/commandbox-smoke.mjs
+      - name: Upload CommandBox startup logs
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: commandbox-logs-${{ matrix.os }}
+          path: bx-jruby-rack/build/commandbox-smoke-*/*.log
       - name: Upload Java test reports
         uses: actions/upload-artifact@v7
         if: always()
@@ -156,3 +174,55 @@ jobs:
         with:
           name: testbox-${{ matrix.boxlang-version }}
           path: bx-jruby-rack/build/testbox/report/
+
+  postgresql:
+    name: Rails / PostgreSQL 17
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: bx_rack_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          path: bx-jruby-rack
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          repository: tonyjunkes/bx-jruby
+          ref: ${{ inputs.core_ref }}
+          path: bx-jruby
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build core candidate
+        working-directory: bx-jruby
+        run: bash ./gradlew moduleZip --console=plain
+      - name: Prepare locked Ruby bundles
+        run: bash ./gradlew prepareFixtures --console=plain
+      - name: Verify Rails database and full-stack behavior
+        env:
+          BX_RAILS_DATABASE_URL: postgresql://postgres:fixture@127.0.0.1:5432/bx_rack_test
+        run: >-
+          bash ./gradlew httpTest
+          --tests '*InstalledHttpTest.realRailsPersistsRecordAndRunsExplicitTasks'
+          --tests '*InstalledHttpTest.realFrameworkHtmlFormsAssetsUploadsAndStreaming'
+          --console=plain
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: postgresql-reports
+          path: bx-jruby-rack/build/reports/tests/httpTest/

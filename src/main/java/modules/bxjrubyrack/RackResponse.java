@@ -56,6 +56,13 @@ public final class RackResponse implements RackSink {
         response.flushBuffer();
     }
 
+    /** Flushes partial bytes and commits headers without ending the servlet response.
+     * @throws IOException if the client disconnects or flushing fails
+     */
+    public void flush() throws IOException {
+        response.flushBuffer();
+    }
+
     /**
      * Reports successfully written body bytes.
      *
