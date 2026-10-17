@@ -25,6 +25,7 @@ class InstalledHttpTest {
     static String base;
     static ScriptingRequestBoxContext script;
     static HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+    static Path railsStreamClosed;
 
     /**
      * Creates a custom fixture app through the installed BoxLang BIF with explicit overrides.
@@ -100,6 +101,7 @@ class InstalledHttpTest {
         assertThrows(ClassNotFoundException.class, () -> Class.forName("org.jruby.Ruby"));
         Path root = Path.of("build/http").toAbsolutePath();
         Files.createDirectories(root.resolve("web"));
+        railsStreamClosed = root.resolve("rails-stream-" + UUID.randomUUID() + ".closed");
         Files.writeString(root.resolve("web/hello.bxm"), "<bx:output>BoxLang says #6 * 7#</bx:output>");
         String modules = Path.of("build/consumer/modules").toAbsolutePath().toString().replace('\\', '/');
         String appRoot = Path.of("src/test/fixtures/custom").toAbsolutePath().toString().replace('\\', '/');
@@ -139,7 +141,7 @@ class InstalledHttpTest {
                                                 "production",
                                                 "BX_RAILS_DATABASE",
                                                 root.resolve("fixture.sqlite3").toString(),
-                                                "BX_RAILS_STREAM_CLOSED", root.resolve("rails-stream.closed").toString(),
+                                                "BX_RAILS_STREAM_CLOSED", railsStreamClosed.toString(),
                                                 "BX_RAILS_DATABASE_URL", System.getenv().getOrDefault("BX_RAILS_DATABASE_URL", "")))));
         if (System.getenv("BX_RAILS_DATABASE_URL") == null) {
             ((IStruct) ((IStruct) ((IStruct) script.getScopeNearby(ortus.boxlang.runtime.scopes.VariablesScope.name)
@@ -793,13 +795,13 @@ class InstalledHttpTest {
                 assertNull(reader.readLine());
             }
         }
-        Path closed = Path.of("build/http/rails-stream.closed");
-        Files.deleteIfExists(closed);
+        assertFalse(Files.exists(railsStreamClosed), "finite responses must not publish the disconnect marker");
         var live = client.send(HttpRequest.newBuilder(URI.create(base + "/rails/events?infinite=1")).GET().build(),
             HttpResponse.BodyHandlers.ofInputStream());
         live.body().readNBytes(32);
         live.body().close();
-        waitFor(() -> Files.exists(closed));
+        waitFor(() -> Files.exists(railsStreamClosed));
+        assertEquals("closed", Files.readString(railsStreamClosed));
     }
 
 }

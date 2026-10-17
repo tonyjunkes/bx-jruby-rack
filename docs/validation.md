@@ -27,6 +27,8 @@ Real HTTP checks cover mounted paths, binary input/output, cookies, CSRF rejecti
 sessions, uploads, static assets, malformed responses, body limits, admission/timeout,
 reload, callable/enumerable precedence, first-event delivery before completion, HEAD,
 stream saturation, disconnect cleanup, cooperative drain and Rails producer cleanup.
+The Rails disconnect marker is unique per test run and published after its file is
+closed; finite streams cannot satisfy the disconnect assertion or race with its cleanup.
 Module archives and Ruby fixtures are explicit Gradle Test inputs so protocol changes
 cannot be skipped solely because implementation classes are absent from the host classpath.
 

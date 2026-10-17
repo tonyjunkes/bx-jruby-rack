@@ -16,6 +16,11 @@ class EventsController < ActionController::Base
     end
   ensure
     response.stream.close
-    File.write(ENV['BX_RAILS_STREAM_CLOSED'], 'closed') if ENV['BX_RAILS_STREAM_CLOSED']
+    if params[:infinite] && ENV['BX_RAILS_STREAM_CLOSED']
+      marker = ENV['BX_RAILS_STREAM_CLOSED']
+      pending = "#{marker}.#{object_id}.pending"
+      File.write(pending, 'closed')
+      File.rename(pending, marker)
+    end
   end
 end
