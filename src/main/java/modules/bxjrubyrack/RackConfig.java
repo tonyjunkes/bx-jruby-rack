@@ -53,7 +53,9 @@ public record RackConfig(
      * @throws RackException if the input is not a struct or fields are unknown or duplicated
      */
     static Map<String, Object> fields(Object object, Set<String> allowed) {
-        if (!(object instanceof Map<?, ?> map)) throw config("Expected a configuration struct");
+        if (!(object instanceof Map<?, ?> map)) {
+            throw config("Expected a configuration struct");
+        }
         var result = new LinkedHashMap<String, Object>();
         map.forEach((key, value) -> {
             if (!(key instanceof CharSequence) && !(key instanceof Key))
@@ -99,7 +101,9 @@ public record RackConfig(
         if (!id.matches("[A-Za-z0-9_.-]+") || !scope.matches("[A-Za-z0-9_.-]+"))
             throw config("id and scope must contain only letters, digits, underscore, dot or hyphen");
         Path root = path(base, string(c, "root", null));
-        if (!Files.isDirectory(root)) throw config("root is not a directory: " + root);
+        if (!Files.isDirectory(root)) {
+            throw config("root is not a directory: " + root);
+        }
         Path rackup = child(root, string(c, "rackup", "config.ru"));
         String mount = string(c, "mount", "/");
         if (!mount.matches("/(?:[A-Za-z0-9_-]+(?:/[A-Za-z0-9_-]+)*/?)?"))
@@ -126,7 +130,9 @@ public record RackConfig(
         }
         var env = new LinkedHashMap<String, String>();
         if (runtime.containsKey("env")) {
-            if (!(runtime.get("env") instanceof Map<?, ?> map)) throw config("runtime.env must be a struct of strings");
+            if (!(runtime.get("env") instanceof Map<?, ?> map)) {
+                throw config("runtime.env must be a struct of strings");
+            }
             map.forEach((key, value) -> {
                 if (!(key instanceof CharSequence) && !(key instanceof Key))
                     throw config("runtime.env keys must be strings");
@@ -144,9 +150,12 @@ public record RackConfig(
             own(env, "BUNDLE_FROZEN", Boolean.toString(frozen));
         }
         options.put("env", Map.copyOf(env));
+        options.put("bundler", enabled ? Map.of("gemfile", gemfile.toString(), "frozen", frozen) : false);
         long maximum = number(c, "maxrequestbodybytes", 16777216, 0, Integer.MAX_VALUE);
         int threshold = (int) number(c, "requestmemorythresholdbytes", 65536, 0, Integer.MAX_VALUE);
-        if (threshold > maximum) throw config("requestMemoryThresholdBytes exceeds maxRequestBodyBytes");
+        if (threshold > maximum) {
+            throw config("requestMemoryThresholdBytes exceeds maxRequestBodyBytes");
+        }
         return new RackConfig(
             id,
             scope,
@@ -192,7 +201,9 @@ public record RackConfig(
      */
     static String string(Map<String, Object> c, String key, String fallback) {
         Object value = c.getOrDefault(key, fallback);
-        if (!(value instanceof String text) || text.isBlank()) throw config(key + " must be a non-empty string");
+        if (!(value instanceof String text) || text.isBlank()) {
+            throw config(key + " must be a non-empty string");
+        }
         return text;
     }
 
@@ -210,9 +221,13 @@ public record RackConfig(
     static long number(Map<String, Object> c, String key, long fallback, long min, long max) {
         try {
             Object configured = c.getOrDefault(key, fallback);
-            if (configured == null) throw config(key + " must be an integer");
+            if (configured == null) {
+                throw config(key + " must be an integer");
+            }
             long value = Long.parseLong(configured.toString());
-            if (value < min || value > max) throw config(key + " is out of range");
+            if (value < min || value > max) {
+                throw config(key + " is out of range");
+            }
             return value;
         } catch (NumberFormatException error) {
             throw config(key + " must be an integer");
@@ -230,7 +245,9 @@ public record RackConfig(
      */
     static boolean bool(Map<String, Object> c, String key, boolean fallback) {
         Object value = c.getOrDefault(key, fallback);
-        if (!(value instanceof Boolean b)) throw config(key + " must be boolean");
+        if (!(value instanceof Boolean b)) {
+            throw config(key + " must be boolean");
+        }
         return b;
     }
 
@@ -257,7 +274,9 @@ public record RackConfig(
      */
     private static Path child(Path root, String text) {
         Path p = path(root, text);
-        if (!Path.of(text).isAbsolute() && !p.startsWith(root)) throw config("Relative paths cannot escape root");
+        if (!Path.of(text).isAbsolute() && !p.startsWith(root)) {
+            throw config("Relative paths cannot escape root");
+        }
         return p;
     }
 
@@ -294,7 +313,9 @@ public record RackConfig(
             Object value = runtime.get(name);
             runtimeSettings.put(name, value instanceof List<?> list ? new ArrayList<>(list) : value);
         }
-        runtimeSettings.put("env", Struct.fromMap((Map<?, ?>) runtime.get("env")));
+        IStruct environmentSnapshot = new Struct(IStruct.TYPES.LINKED_CASE_SENSITIVE);
+        ((Map<?, ?>) runtime.get("env")).forEach((name, value) -> environmentSnapshot.put(name.toString(), value));
+        runtimeSettings.put("env", environmentSnapshot);
         return Struct.of(
             "id", id, "scope", scope, "root", root.toString(), "rackup", rackup.toString(),
             "mount", mount, "environment", environment,

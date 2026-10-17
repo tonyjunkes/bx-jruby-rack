@@ -1,0 +1,17 @@
+/** Native entry point for JRubyRackGet; Java owns runtime execution. */
+class {
+    property name="moduleRecord";
+
+    /** Validates public arguments and resolves this activation's Java bridge. */
+    function invoke(required string id, string scope = "default") {
+        if (!structKeyExists(variables, "bridge")) {
+            variables.bridge = createObject(
+                type = "java",
+                className = "modules.bxjrubyrack.RackRuntime",
+                classLoader = moduleRecord.getModuleClassLoader().toClassLoader()
+            );
+        }
+
+        return variables.bridge.get(arguments.id, arguments.scope);
+    }
+}

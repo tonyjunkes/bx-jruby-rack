@@ -1,66 +1,64 @@
 package modules.bxjrubyrack.gateway;
 
 import jakarta.servlet.*;
-import jakarta.servlet.http.*;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.lang.reflect.*;
-import ortus.boxlang.runtime.BoxRuntime;
-import ortus.boxlang.runtime.scopes.Key;
 
-/** Deploy this small gateway JAR in WEB-INF/lib and map before BoxLang and body parsers. */
+/** Early servlet gateway; host libraries may live above the BoxLang webapp classloader. */
 public final class RackGateway implements Filter {
     private String scope;
-    private Class<?> bridge;
-    private BoxRuntime runtime;
+    private Object modules;
+    private Object moduleKey;
+    private Method lookup;
+    private volatile GatewayApi bridge;
 
     /**
-     * Initializes the shared BoxLang runtime and opens this filter's scope before accepting requests.
-     *
-     * @param config filter settings containing scope and shared BoxLang home/config paths
-     * @throws ServletException if gateway startup or committed-request handling fails
+     * Resolves BoxLang through the servlet webapp loader, then opens this gateway scope.
+     * @param config scope and shared runtime paths
+     * @throws ServletException if BoxLang or Rack initialization fails
      */
     @Override
     public void init(FilterConfig config) throws ServletException {
         scope = config.getInitParameter("scope");
-        if (scope == null) scope = "default";
-        runtime = BoxRuntime.getInstance(
-            null,
-            config.getInitParameter("boxlang-config-path"),
-            config.getInitParameter("boxlang-home")
-        )
-        .waitForStart();
+        if (scope == null) {
+            scope = "default";
+        }
         try {
+            var loader = config.getServletContext().getClassLoader();
+            var runtimeType = loader.loadClass("ortus.boxlang.runtime.BoxRuntime");
+            var runtime = invoke(runtimeType.getMethod("getInstance", Boolean.class, String.class, String.class),
+                null, null, config.getInitParameter("boxlang-config-path"), config.getInitParameter("boxlang-home"));
+            invoke(runtimeType.getMethod("waitForStart"), runtime);
+            modules = invoke(runtimeType.getMethod("getModuleService"), runtime);
+            var keyType = loader.loadClass("ortus.boxlang.runtime.scopes.Key");
+            moduleKey = invoke(keyType.getMethod("of", String.class), null, "bxjrubyrack");
+            lookup = modules.getClass().getMethod("getModuleRecord", keyType);
             refresh();
-        } catch (RuntimeException e) {
-            throw new ServletException("Rack gateway startup failed", e);
+        } catch (ReflectiveOperationException | RuntimeException error) {
+            throw new ServletException("Rack gateway startup failed", error);
         }
     }
 
     /**
-     * Dispatches mounted requests and delegates unmatched requests. Gateway failure returns 503 before
-     * commitment or fails the transport afterward.
-     *
-     * @param request the incoming servlet request
-     * @param response the corresponding servlet response
-     * @param chain the downstream servlet chain for unmatched requests
-     * @throws IOException if transport I/O or temporary-file cleanup fails
-     * @throws ServletException if gateway startup or committed-request handling fails
+     * Routes matched requests with one immutable activation snapshot, delegating unmatched requests.
+     * @param request the incoming request
+     * @param response the servlet response
+     * @param chain downstream BoxLang and static-file handlers
+     * @throws IOException on transport failure
+     * @throws ServletException on failure after response commitment
      */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain) throws IOException, ServletException {
         boolean handled;
         try {
-            refresh();
-            handled = (Boolean) call(
-                "dispatch",
-                new Class<?>[] {String.class, Object.class, Object.class},
-                scope,
-                request,
-                response
-            );
-        } catch (RuntimeException e) {
-            System.getLogger("bx-jruby-rack").log(System.Logger.Level.ERROR, "Rack gateway unavailable", e);
-            if (response.isCommitted()) throw new ServletException("Rack gateway failed after commitment", e);
+            var current = refresh();
+            handled = (Boolean) invoke(current.dispatch(), null, scope, request, response);
+        } catch (RuntimeException error) {
+            System.getLogger("bx-jruby-rack").log(System.Logger.Level.ERROR, "Rack gateway unavailable", error);
+            if (response.isCommitted()) {
+                throw new ServletException("Rack gateway failed after commitment", error);
+            }
             var http = (HttpServletResponse) response;
             http.reset();
             http.setStatus(503);
@@ -69,58 +67,78 @@ public final class RackGateway implements Filter {
             http.getOutputStream().write("Service unavailable".getBytes(java.nio.charset.StandardCharsets.UTF_8));
             return;
         }
-        if (!handled) chain.doFilter(request, response);
+        if (!handled) {
+            chain.doFilter(request, response);
+        }
     }
 
-    /**
-     * Closes this filter's scope and waits for workers to release their runtimes.
-     */
+    /** Closes the current scope and waits for its owned workers. */
     @Override
     public void destroy() {
-        if (bridge != null) call("closeGateway", new Class<?>[] {String.class}, scope);
+        var current = bridge;
+        if (current != null) {
+            invoke(current.close(), null, scope);
+        }
     }
 
     /**
-     * Resolves the active module loader and reopens the scope after reload, retaining the prior bridge on
-     * failure.
+     * Rebinds after module reload, publishing cached entry points only after the new scope opens.
+     * @return the active gateway snapshot
      */
-    private synchronized void refresh() {
-        var module = runtime.getModuleService().getModuleRecord(Key.of("bxjrubyrack"));
-        if (module == null || module.getModuleClassLoader() == null)
+    private synchronized GatewayApi refresh() {
+        var module = invoke(lookup, modules, moduleKey);
+        if (module == null) {
             throw new IllegalStateException("Install and enable bx-jruby-rack and bx-jruby");
+        }
         try {
-            Class<?> latest = module.getModuleClassLoader().toClassLoader().loadClass("modules.bxjrubyrack.RackRuntime");
-            if (latest != bridge) {
-                Class<?> previous = bridge;
-                bridge = latest;
-                try {
-                    call("openGateway", new Class<?>[] {String.class}, scope);
-                } catch (RuntimeException error) {
-                    bridge = previous;
-                    throw error;
-                }
+            var moduleLoader = invoke(module.getClass().getMethod("getModuleClassLoader"), module);
+            if (moduleLoader == null) {
+                throw new IllegalStateException("Rack module is not registered");
             }
-        } catch (ClassNotFoundException e) {
-            throw new IllegalStateException("Rack gateway API missing", e);
+            var loader = (ClassLoader) invoke(moduleLoader.getClass().getMethod("toClassLoader"), moduleLoader);
+            var latest = loader.loadClass("modules.bxjrubyrack.RackRuntime");
+            if (bridge == null || bridge.type() != latest) {
+                var candidate = new GatewayApi(latest,
+                    latest.getMethod("openGateway", String.class), latest.getMethod("closeGateway", String.class),
+                    latest.getMethod("dispatch", String.class, Object.class, Object.class));
+                invoke(candidate.open(), null, scope);
+                bridge = candidate;
+            }
+            return bridge;
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException("Incompatible Rack gateway API", error);
         }
     }
 
     /**
-     * Invokes a public module entry point and unwraps runtime reflection failures.
-     *
-     * @param name the public Rack gateway entry-point name
-     * @param signature the public parameter types for reflective lookup
-     * @param arguments positional gateway entry-point arguments
-     * @return the Rack entry point's return value
+     * Invokes a public host/module method without linking their classes into the gateway loader.
+     * @param method the cached public method
+     * @param target the instance or null for static methods
+     * @param args method arguments
+     * @return the result
      */
-    private Object call(String name, Class<?>[] signature, Object... arguments) {
+    private static Object invoke(Method method, Object target, Object... args) {
         try {
-            return bridge.getMethod(name, signature).invoke(null, arguments);
-        } catch (InvocationTargetException e) {
-            if (e.getCause() instanceof RuntimeException runtime) throw runtime;
-            throw new IllegalStateException(e.getCause());
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException("Incompatible Rack gateway API", e);
+            return method.invoke(target, args);
+        } catch (InvocationTargetException error) {
+            if (error.getCause() instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (error.getCause() instanceof Error fatal) {
+                throw fatal;
+            }
+            throw new IllegalStateException(error.getCause());
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException("Incompatible host or Rack API", error);
         }
     }
+
+    /**
+     * Cached public methods belonging to one module activation.
+     * @param type the activation's bridge class
+     * @param open opens the scope
+     * @param close drains the scope
+     * @param dispatch routes an HTTP request
+     */
+    private record GatewayApi(Class<?> type, Method open, Method close, Method dispatch) {}
 }

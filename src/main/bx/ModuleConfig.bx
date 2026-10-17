@@ -6,7 +6,7 @@ class {
     this.title = "bx-jruby-rack";
     this.author = "Tony Junkes";
     this.description = "Run Rack and Ruby framework applications in BoxLang.";
-    this.version = "1.0.0";
+    this.version = "1.1.0";
     this.mapping = "bxjrubyrack";
     this.dependencies = ["bxjruby"];
 
@@ -25,10 +25,21 @@ class {
         variables.bridge.start(boxRuntime, moduleRecord);
     }
 
+    /** Drains runtimes, then removes only descriptors owned by this activation. */
     function onUnload() {
-        if (structKeyExists(variables, "bridge") && !isNull(variables.bridge)) {
-            variables.bridge.stop(boxRuntime, moduleRecord.name.getName());
+        try {
+            if (structKeyExists(variables, "bridge") && !isNull(variables.bridge)) {
+                variables.bridge.stop(boxRuntime, moduleRecord.name.getName());
+            }
+        } finally {
+            var functions = boxRuntime.getFunctionService();
+            for (var name in ["jrubyRack","jrubyRackGet","jrubyRackTask"]) {
+                var descriptor = functions.getGlobalFunction(name);
+                if (!isNull(descriptor) && compareNoCase(descriptor.module, moduleRecord.name.getName()) == 0) {
+                    functions.unregisterGlobalFunction(createObject("java", "ortus.boxlang.runtime.scopes.Key").of(name));
+                }
+            }
+            variables.bridge = null;
         }
-        variables.bridge = null;
     }
 }

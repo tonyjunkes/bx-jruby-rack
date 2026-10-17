@@ -1,0 +1,12 @@
+{
+  "name": "BoxLang Rack starter",
+  "private": true,
+  "dependencies": {
+    "bx-jruby": "1.2.0",
+    "bx-jruby-rack": "1.1.0"
+  },
+  "installPaths": {
+    "bx-jruby": "modules/bx-jruby/",
+    "bx-jruby-rack": "modules/bx-jruby-rack/"
+  }
+}

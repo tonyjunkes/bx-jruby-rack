@@ -1,6 +1,6 @@
 # BoxLang JRuby Rack Support
 
-Host Ruby Rack applications inside BoxLang, using **bx-jruby 1.1.0+** for runtime ownership. It supports synchronous Rack 3 enumerable responses through a Jakarta Servlet gateway. The repository includes locked custom Rack, Sinatra, and Rails/JDBC fixtures.
+Host Ruby Rack applications inside BoxLang, using **bx-jruby 1.2.0** for runtime ownership. It supports Rack 3 enumerable and callable responses, including SSE, through a Jakarta Servlet gateway. The repository includes locked custom Rack, Sinatra, and Rails/JDBC fixtures.
 
 Requires Java 21+, BoxLang 1.18.0+, and the gateway described below. See [compatibility](docs/compatibility.md) for exact versions and limitations and the [validation record](docs/validation.md) for test results.
 
@@ -30,7 +30,32 @@ To get started, configure the gateway below, prepare a Ruby app with `Gemfile`
 and `config.ru`, and add its mount to `boxlang.json`. Then start the servlet host
 and visit `/ruby`.
 
-## Install and configure the gateway
+## CommandBox quick start
+
+Install the module from ForgeBox, then copy its packaged `examples/commandbox` folder
+into a new application directory. The starter's `box.json` installs both sibling modules.
+From the copied directory run:
+
+```sh
+box install
+box task run
+box server start
+```
+
+Open http://localhost:8080/ for BoxLang, `/ruby` for Ruby and `/ruby/events` for SSE.
+CommandBox 6.2+ is required; the starter pins the verified servlet package
+`boxlang@1.18.6+62`, containing BoxLang runtime 1.18.0. Setup explicitly installs the
+locked Ruby bundle with core's JRuby and generates the gateway configuration.
+
+Only `public/` is served. Modules, app source, gems and configuration remain outside
+it. The starter uses `app.libDirs` for the gateway and `web.servletPassPredicate=true`
+to route extensionless Ruby requests through the servlet filter. It supplies explicit
+BoxLang servlet mappings and welcome files in the override. Read the
+[starter instructions](examples/commandbox/README.md) before customizing it.
+
+## Generic Jakarta Servlet installation
+
+### Install and configure the gateway
 
 Locate `bx-jruby-rack` in the modules directory populated by the installer. Its `gateway/` directory contains the host gateway JAR. The core and Rack modules load together from that installation.
 
@@ -180,7 +205,7 @@ Admission occurs before reading the body. Queued requests retain servlet connect
 
 Configure transport timeouts and trusted proxies in the servlet host. The bridge uses the host's resolved scheme/address and does not apply its own forwarded-header trust rules. Encoded path/query text is passed through; ambiguous mounts are rejected. Underscore-containing incoming header names are ignored to avoid CGI-name collisions. Repeated Cookie fields use `; ` and other repeated fields use comma joining.
 
-Only finite synchronous enumerable Rack bodies are supported. No WebSockets, hijacking, callable streaming, early hints, protocol upgrades, SSE guarantee, dynamic resizing, hot reload of Ruby files, or automatic assets/gems/migrations. HEAD and bodyless responses close the body without sending it. Application-returned headers must follow Rack 3 lowercase/array conventions; transfer framing belongs to the servlet container.
+Enumerable and callable Rack 3 bodies are supported, including SSE. Callable streams expose buffered request reads and raw response writes/flush/close; SSE enumerable chunks flush immediately. Each open stream occupies one Ruby worker. WebSockets, hijacking, early hints, protocol upgrades, dynamic resizing, hot reload of Ruby files, and automatic assets/gems/migrations remain outside this release. HEAD and bodyless responses close the body without sending it. Application-returned headers must follow Rack 3 lowercase/array conventions; transfer framing belongs to the servlet container. See [deployment and streaming](docs/deployment.md), [capabilities](docs/capabilities.md), and [validation](docs/validation.md).
 
 Production bridge failures return generic responses. Detailed causes/backtraces remain available in host logs and task exception causes. An error after response commitment fails the transport path; no BoxLang error template is appended. Application-generated error pages are governed by the application's framework configuration.
 

@@ -12,7 +12,8 @@ module RackFixture
     config.log_level = :warn
     config.active_record.schema_format = :ruby
     config.active_record.dump_schema_after_migration = false
-    config.action_controller.allow_forgery_protection = false
+    config.action_controller.allow_forgery_protection = true
+    config.public_file_server.enabled = true
     config.session_store :cookie_store, key: '_bx_rack_fixture', same_site: :lax
   end
 end

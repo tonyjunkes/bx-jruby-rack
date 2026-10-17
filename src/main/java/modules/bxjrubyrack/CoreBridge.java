@@ -24,17 +24,18 @@ final class CoreBridge {
     CoreBridge(BoxRuntime runtime) {
         var record = runtime.getModuleService().getModuleRecord(Key.of("bxjruby"));
         if (record == null || record.getModuleClassLoader() == null || record.activatedOn == null)
-            throw new RackException("CORE_MISSING", 500, "bx-jruby 1.1.0+ must be installed and active");
+            throw new RackException("CORE_MISSING", 500, "bx-jruby 1.2.0+ must be installed and active");
         try {
             api = record.getModuleClassLoader().toClassLoader().loadClass("modules.bxjruby.JRubyRuntime");
             if (!Integer.valueOf(1).equals(invoke(api.getMethod("extensionVersion"), null)))
                 throw new NoSuchMethodException();
             var sessionType = api.getMethod("session", Path.class, Map.class).getReturnType();
             sessionType.getMethod("eval", String.class, Map.class);
+            sessionType.getMethod("evalHandle", String.class, Map.class);
             sessionType.getMethod("closeAndCapture");
             api.getMethod("beforeClose", Runnable.class);
         } catch (ReflectiveOperationException e) {
-            throw new RackException("CORE_INCOMPATIBLE", 500, "bx-jruby 1.1.0+ extension API 1 is required");
+            throw new RackException("CORE_INCOMPATIBLE", 500, "bx-jruby 1.2.0+ extension API 1 is required");
         }
     }
 
@@ -92,8 +93,12 @@ final class CoreBridge {
         try {
             return method.invoke(target, args);
         } catch (InvocationTargetException e) {
-            if (e.getCause() instanceof RuntimeException runtime) throw runtime;
-            if (e.getCause() instanceof Error error) throw error;
+            if (e.getCause() instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            if (e.getCause() instanceof Error error) {
+                throw error;
+            }
             throw new IllegalStateException(e.getCause());
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(e);
@@ -102,6 +107,8 @@ final class CoreBridge {
 
     static final class Session implements AutoCloseable {
         private final Object session;
+        private final Method evaluate;
+        private final Method terminate;
 
         /**
          * Wraps a core session without exposing its implementation types across module loaders.
@@ -110,6 +117,12 @@ final class CoreBridge {
          */
         Session(Object session) {
             this.session = session;
+            try {
+                evaluate = session.getClass().getMethod("eval", String.class, Map.class);
+                terminate = session.getClass().getMethod("closeAndCapture");
+            } catch (NoSuchMethodException error) {
+                throw new IllegalStateException("Incompatible core session API", error);
+            }
         }
 
         /**
@@ -121,14 +134,7 @@ final class CoreBridge {
          */
         IStruct eval(String script, Map<?, ?> bindings) {
             try {
-                return (IStruct) method(
-                    session.getClass(),
-                    "eval",
-                    session,
-                    new Class<?>[] {String.class, Map.class},
-                    script,
-                    bindings
-                );
+                return (IStruct) invoke(evaluate, session, script, bindings);
             } catch (RuntimeException error) {
                 logFailure(error);
                 throw error;
@@ -167,7 +173,7 @@ final class CoreBridge {
         @Override
         public void close() {
             try {
-                RackApp.log((IStruct) method(session.getClass(), "closeAndCapture", session, new Class<?>[0]));
+                RackApp.log((IStruct) invoke(terminate, session));
             } catch (RuntimeException error) {
                 logFailure(error);
                 throw error;

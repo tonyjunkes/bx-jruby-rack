@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Rails notes</title><%= csrf_meta_tags %></head><body>
+<h1>Rails in BoxLang</h1>
+<% @notes.each do |note| %><p><%= note.text %></p><% end %>
+<%= form_with url: url_for(action: :form_create), local: true do |form| %>
+<%= form.label :text %><%= form.text_field :text %><%= form.submit 'Save note' %>
+<% end %>
+<%= form_with url: url_for(action: :upload), multipart: true, local: true do |form| %>
+<%= form.file_field :upload %><%= form.submit 'Upload' %>
+<% end %></body></html>

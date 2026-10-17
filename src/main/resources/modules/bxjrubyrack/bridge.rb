@@ -8,7 +8,6 @@ module Kernel
   module_function :exit!
 end
 
-require 'bundler/setup' if bx_boot['bundler']
 require 'rack'
 raise "Unsupported Rack #{Rack.release}; Rack 3.x is required" unless Rack.release.split('.').first == '3'
 
@@ -59,6 +58,84 @@ module BxRack
     end
   end
 
+  # Buffered request input and raw response output; no socket hijack is exposed.
+  class Stream
+    def initialize(input, sink, length, autoflush = false)
+      @input, @sink, @length, @autoflush = input, sink, length, autoflush
+      @count = 0
+      @closed = @read_closed = @write_closed = false
+    end
+
+    attr_reader :count
+
+    def write(*chunks)
+      raise IOError, 'closed stream for writing' if @write_closed || closed?
+      written = 0
+      chunks.each do |chunk|
+        raise TypeError, 'Rack body chunks must be Strings' unless chunk.is_a?(String)
+        raise IOError, 'response exceeds content-length' if @length && @count + chunk.bytesize > @length
+        @sink.write(chunk.to_java_bytes)
+        @count += chunk.bytesize
+        written += chunk.bytesize
+        @sink.flush if @autoflush
+      end
+      written
+    end
+
+    def <<(chunk)
+      write(chunk)
+      self
+    end
+
+    def read(*args)
+      raise IOError, 'closed stream' if @read_closed || closed?
+      @input.read(*args)
+    end
+
+    def flush
+      raise IOError, 'closed stream for writing' if @write_closed || closed?
+      @sink.flush
+      self
+    end
+
+    def close_read
+      @read_closed = true
+      @closed = true if @write_closed
+      nil
+    end
+
+    def close_write
+      return if @write_closed
+      begin
+        @sink.flush unless @sink.is_closed
+      ensure
+        @write_closed = true
+        @closed = true if @read_closed
+      end
+      nil
+    end
+
+    def close
+      return if @closed
+      begin
+        close_write
+      ensure
+        @closed = @read_closed = true
+      end
+      nil
+    end
+
+    def closed?
+      @closed || @sink.is_closed
+    end
+
+    # Invalidate retained stream objects before body cleanup or worker reuse.
+    def server_close
+      @closed = @read_closed = @write_closed = true
+      @input = @sink = nil
+    end
+  end
+
   def self.boot(path)
     Rack::Builder.parse_file(path)
   end
@@ -77,7 +154,7 @@ module BxRack
       status, headers, body = tuple
       raise 'Unsupported HTTP status (synchronous responses require 200..599)' unless status.is_a?(Integer) && (200..599).cover?(status)
       raise 'Rack headers must be a mutable Hash' unless headers.is_a?(Hash) && !headers.frozen?
-      raise 'Callable/streaming Rack bodies are unsupported; an enumerable body is required' unless body.respond_to?(:each)
+      raise 'Rack body must respond to each or call' unless body.respond_to?(:each) || body.respond_to?(:call)
       headers.each do |key, value|
         raise 'Invalid or unsupported Rack response header' unless key.is_a?(String) && key.match?(/\A[!#$%&'*+.^_`|~0-9a-z-]+\z/) && key != 'status' && !key.start_with?('rack.')
         raise 'Transport-owned response header is unsupported' if %w[connection transfer-encoding upgrade keep-alive trailer].include?(key)
@@ -97,17 +174,21 @@ module BxRack
         end
       end
 
-      count = 0
       no_body = env['REQUEST_METHOD'] == 'HEAD' || [204, 304].include?(status)
-      body.each do |chunk|
-        raise 'Rack body chunks must be Strings' unless chunk.is_a?(String)
-        unless no_body
-          count += chunk.bytesize
-          raise 'Response exceeds content-length' if headers['content-length'] && count > headers['content-length'].to_i
-          sink.write(chunk.to_java_bytes)
+      sse = Array(headers['content-type']).any? do |value|
+        value.split(';', 2).first.to_s.strip.casecmp?('text/event-stream')
+      end
+      callable = !body.respond_to?(:each)
+      sink.start_streaming if !no_body && (callable || sse)
+      output = Stream.new(stream, sink, headers['content-length']&.to_i, sse)
+      unless no_body
+        if callable
+          body.call(output)
+        else
+          body.each { |chunk| output.write(chunk) }
         end
-      end unless no_body
-      raise 'Response shorter than content-length' if !no_body && headers['content-length'] && count != headers['content-length'].to_i
+        raise 'Response shorter than content-length' if headers['content-length'] && output.count != headers['content-length'].to_i
+      end
       sink.finish
     rescue SystemExit => caught
       error = caught
@@ -117,6 +198,7 @@ module BxRack
       raise
     ensure
       begin
+        output&.server_close
         body.close if body.respond_to?(:close)
       rescue Exception => close_error
         if error.nil?

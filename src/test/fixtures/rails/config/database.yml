@@ -1,8 +1,12 @@
 default: &default
-  adapter: sqlite3
-  database: <%= ENV.fetch('BX_RAILS_DATABASE').to_json %>
   pool: 5
   timeout: 5000
+<% if ENV['BX_RAILS_DATABASE_URL'] %>
+  url: <%= ENV.fetch('BX_RAILS_DATABASE_URL').to_json %>
+<% else %>
+  adapter: sqlite3
+  database: <%= ENV.fetch('BX_RAILS_DATABASE').to_json %>
+<% end %>
 production:
   <<: *default
 test:

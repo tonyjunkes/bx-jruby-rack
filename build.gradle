@@ -84,11 +84,16 @@ tasks.register('verifyModuleMetadata') {
         if (manifest.dependencies['bx-jruby'] != requiredCore) {
             throw new GradleException('The bx-jruby dependency must match the coreVersion compatibility baseline')
         }
+        def expectedLocation = "https://github.com/tonyjunkes/bx-jruby-rack/releases/download/${releaseVersion}/bx-jruby-rack-${releaseVersion}.zip"
+        if (manifest.location != expectedLocation) {
+            throw new GradleException('ForgeBox location must point to this version of the compiled GitHub release ZIP')
+        }
     }
 }
 
 tasks.register('createModuleStructure', Sync) {
     dependsOn jar, gatewayJar, verifyModuleMetadata
+    inputs.file('examples/commandbox/.gitignore')
     into layout.buildDirectory.dir('module')
     from(tasks.jar) {
         into 'libs'
@@ -98,23 +103,38 @@ tasks.register('createModuleStructure', Sync) {
     }
     from('src/main/bx')
     from('.') {
-        include 'box.json', 'README.md', 'SKILL.md', 'LICENSE', 'CHANGELOG.md', 'THIRD-PARTY-NOTICES.md'
+        include 'box.json', 'README.md', 'SKILL.md', 'LICENSE', 'CHANGELOG.md', 'THIRD-PARTY-NOTICES.md', 'AGENTS.md'
     }
     from('docs') {
         into 'docs'
         exclude 'implementation-spec.md'
     }
+    from('examples') {
+        into 'examples'
+    }
     from('src/test/fixtures') {
         into 'examples'
         exclude '**/log/**', '**/tmp/**', '**/vendor/**', '**/.bundle/**'
+    }
+    doLast {
+        // Ant's directory defaults omit .gitignore; copy this intentional starter resource explicitly.
+        file("${destinationDir}/examples/commandbox/.gitignore").bytes = file('examples/commandbox/.gitignore').bytes
     }
 }
 
 tasks.register('moduleZip', Zip) {
     dependsOn createModuleStructure
+    inputs.file('examples/commandbox/.gitignore')
     from(layout.buildDirectory.dir('module'))
     archiveFileName = "bx-jruby-rack-${version}.zip"
     destinationDirectory = layout.buildDirectory.dir('distributions')
+    doLast {
+        // Limit the default-exclude exception to this file and retain reproducible ZIP timestamps.
+        ant.zip(destfile: archiveFile.get().asFile, update: true, modificationtime: '1980-01-01T00:00:00Z') {
+            zipfileset(file: file('examples/commandbox/.gitignore'),
+                fullpath: 'examples/commandbox/.gitignore', defaultexcludes: false)
+        }
+    }
 }
 
 tasks.register('moduleChecksum') {
@@ -138,6 +158,11 @@ tasks.register('verifyPackage') {
     dependsOn moduleZip
 
     doLast {
+        new java.util.zip.ZipFile(tasks.moduleZip.archiveFile.get().asFile).withCloseable { zip ->
+            if (zip.getEntry('examples/commandbox/.gitignore') == null) {
+                throw new GradleException('The CommandBox starter must include its .gitignore')
+            }
+        }
         def jars = fileTree('build/module').matching {
             include '**/*.jar'
         }.files
@@ -168,6 +193,14 @@ tasks.register('prepareConsumer', Sync) {
     }
     from({ zipTree(file(providers.gradleProperty('coreZip').getOrElse("../bx-jruby/build/distributions/bx-jruby-${coreVersion}.zip"))) }) {
         into 'bx-jruby'
+    }
+    doLast {
+        // Match an installer extraction: Sync also filters .gitignore entries from ZIP trees.
+        new java.util.zip.ZipFile(tasks.moduleZip.archiveFile.get().asFile).withCloseable { zip ->
+            zip.getInputStream(zip.getEntry('examples/commandbox/.gitignore')).withCloseable { stream ->
+                file("${destinationDir}/bx-jruby-rack/examples/commandbox/.gitignore").bytes = stream.readAllBytes()
+            }
+        }
     }
 }
 
@@ -218,6 +251,22 @@ tasks.register('benchmark', Test) {
         events 'failed', 'passed'
         exceptionFormat = 'full'
     }
+}
+
+// Installed implementations are intentionally absent from the host classpath. Declare
+// their archives and Ruby fixtures explicitly so protocol/core changes rerun acceptance tests.
+tasks.withType(Test).configureEach {
+    inputs.file(tasks.named('moduleZip', Zip).flatMap { it.archiveFile })
+    inputs.file(providers.gradleProperty('coreZip').map { file(it) }
+        .orElse(provider { file("../bx-jruby/build/distributions/bx-jruby-${coreVersion}.zip") }))
+    inputs.files(fileTree('src/test/fixtures') {
+        exclude '**/log/**', '**/tmp/**', '**/vendor/**', '**/.bundle/**'
+    })
+}
+
+tasks.named('httpTest') {
+    // External database state is not a cacheable test input.
+    outputs.upToDateWhen { !providers.environmentVariable('BX_RAILS_DATABASE_URL').isPresent() }
 }
 
 // Network access occurs only in this explicitly invoked preparation task.

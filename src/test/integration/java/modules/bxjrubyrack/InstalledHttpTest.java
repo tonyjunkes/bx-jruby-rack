@@ -25,6 +25,7 @@ class InstalledHttpTest {
     static String base;
     static ScriptingRequestBoxContext script;
     static HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+    static Path railsStreamClosed;
 
     /**
      * Creates a custom fixture app through the installed BoxLang BIF with explicit overrides.
@@ -100,6 +101,7 @@ class InstalledHttpTest {
         assertThrows(ClassNotFoundException.class, () -> Class.forName("org.jruby.Ruby"));
         Path root = Path.of("build/http").toAbsolutePath();
         Files.createDirectories(root.resolve("web"));
+        railsStreamClosed = root.resolve("rails-stream-" + UUID.randomUUID() + ".closed");
         Files.writeString(root.resolve("web/hello.bxm"), "<bx:output>BoxLang says #6 * 7#</bx:output>");
         String modules = Path.of("build/consumer/modules").toAbsolutePath().toString().replace('\\', '/');
         String appRoot = Path.of("src/test/fixtures/custom").toAbsolutePath().toString().replace('\\', '/');
@@ -138,7 +140,13 @@ class InstalledHttpTest {
                                                 "RAILS_ENV",
                                                 "production",
                                                 "BX_RAILS_DATABASE",
-                                                root.resolve("fixture.sqlite3").toString()))));
+                                                root.resolve("fixture.sqlite3").toString(),
+                                                "BX_RAILS_STREAM_CLOSED", railsStreamClosed.toString(),
+                                                "BX_RAILS_DATABASE_URL", System.getenv().getOrDefault("BX_RAILS_DATABASE_URL", "")))));
+        if (System.getenv("BX_RAILS_DATABASE_URL") == null) {
+            ((IStruct) ((IStruct) ((IStruct) script.getScopeNearby(ortus.boxlang.runtime.scopes.VariablesScope.name)
+                .get("railsConfig")).get("runtime")).get("env")).remove("BX_RAILS_DATABASE_URL");
+        }
         runtime.executeSource("jrubyRackTask(railsConfig, 'db:migrate');", script);
         server = new Server(0);
 
@@ -190,6 +198,75 @@ class InstalledHttpTest {
     }
 
     /**
+     * Verifies callable I/O, enumerable precedence, first-event flushing, disconnect cleanup and drain.
+     * @throws Exception if transport or fixture cleanup fails
+     */
+    @Test
+    void streamingFlushesAndCleansUpOnDisconnectAndDrain() throws Exception {
+        Path root = Path.of("build/http/streams").toAbsolutePath();
+        Files.createDirectories(root);
+        Path gate = root.resolve("gate");
+        Path closed = root.resolve("closed");
+        Path finished = root.resolve("finished");
+        Files.writeString(gate, "hold");
+        Files.deleteIfExists(closed);
+        Files.deleteIfExists(finished);
+        Object app = createApp("streaming", Map.of("queueCapacity", 0, "runtime", Struct.of("env", Struct.of(
+            "BUNDLE_PATH", Path.of("build/bundles/custom").toAbsolutePath().toString(),
+            "BX_STREAM_GATE", gate.toString(), "BX_STREAM_CLOSED", closed.toString(),
+            "BX_STREAM_FINISHED", finished.toString()))));
+        try {
+            assertEquals("enumerable", text(request("/streaming/both", "GET", new byte[0])));
+            byte[] bytes = {0, -1, 65};
+            assertArrayEquals(bytes, request("/streaming/stream-io", "POST", bytes).body());
+            waitFor(() -> ((Number) status(app).get("active")).intValue() == 0);
+            assertEquals("half", text(request("/streaming/stream-half", "POST", "request".getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+            waitFor(() -> ((Number) status(app).get("active")).intValue() == 0);
+            assertEquals(200, request("/streaming/stream-long", "HEAD", new byte[0]).statusCode());
+            waitFor(() -> ((Number) status(app).get("active")).intValue() == 0);
+            Files.deleteIfExists(closed);
+            Files.deleteIfExists(finished);
+            var response = client.send(HttpRequest.newBuilder(URI.create(base + "/streaming/stream-gated"))
+                .timeout(java.time.Duration.ofSeconds(10)).GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+            try (var input = new java.io.BufferedReader(new java.io.InputStreamReader(response.body()))) {
+                assertEquals(200, response.statusCode());
+                assertEquals("data: first", input.readLine());
+                assertTrue(Files.exists(gate), "first event must arrive while the producer is still blocked");
+                assertEquals(1, ((Number) status(app).get("streams")).intValue());
+                assertEquals(503, request("/streaming/state", "GET", new byte[0]).statusCode());
+                Files.delete(gate);
+                assertEquals("", input.readLine());
+                assertEquals("data: second", input.readLine());
+                assertEquals("", input.readLine());
+                assertNull(input.readLine());
+            }
+            waitFor(() -> Files.exists(closed) && Files.exists(finished));
+            waitFor(() -> ((Number) status(app).get("active")).intValue() == 0);
+            Files.delete(closed);
+            Files.delete(finished);
+            var disconnected = client.send(HttpRequest.newBuilder(URI.create(base + "/streaming/stream-long"))
+                .GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+            disconnected.body().readNBytes(16);
+            disconnected.body().close();
+            waitFor(() -> Files.exists(closed) && Files.exists(finished));
+            waitFor(() -> ((Number) status(app).get("active")).intValue() == 0);
+            Files.delete(closed);
+            Files.delete(finished);
+            var draining = client.send(HttpRequest.newBuilder(URI.create(base + "/streaming/stream-long"))
+                .GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+            draining.body().readNBytes(16);
+            invoke(app, "close");
+            draining.body().close();
+            waitFor(() -> Files.exists(closed) && Files.exists(finished));
+            assertEquals("CLOSED", status(app).get("state"));
+            assertEquals(0, ((Number) status(app).get("streams")).intValue());
+        } finally {
+            Files.deleteIfExists(gate);
+            invoke(app, "close");
+        }
+    }
+
+    /**
      * Verifies Rails migrations, sessions, routing and persisted records through the installed gateway.
      *
      * @throws Exception if fixture setup, execution or cleanup fails
@@ -201,6 +278,9 @@ class InstalledHttpTest {
         assertTrue(text(health).contains("7.2.4"));
         assertTrue(text(health).contains("/ctx/rails"));
         String cookie = health.headers().firstValue("set-cookie").orElseThrow().split(";", 2)[0];
+        var csrfMatch = java.util.regex.Pattern.compile("\"csrf\":\"([^\"]+)\"").matcher(text(health));
+        assertTrue(csrfMatch.find());
+        String csrf = csrfMatch.group(1);
         var next =
                 client.send(
                         HttpRequest.newBuilder(URI.create(base + "/rails/health"))
@@ -213,6 +293,8 @@ class InstalledHttpTest {
                 client.send(
                         HttpRequest.newBuilder(URI.create(base + "/rails/notes"))
                                 .header("Content-Type", "application/json")
+                                .header("Cookie", cookie)
+                                .header("X-CSRF-Token", csrf)
                                 .POST(HttpRequest.BodyPublishers.ofString("{\"text\":\"persisted from BoxLang\"}"))
                                 .build(),
                         HttpResponse.BodyHandlers.ofByteArray());
@@ -228,6 +310,8 @@ class InstalledHttpTest {
         var result =
                 runtime.executeSource("jrubyRackTask(resolvedRailsConfig, 'fixture_args', ['a;b', 'quoted value']);", script);
         assertTrue(result.toString().contains("a;b|quoted value"), result.toString());
+        var transaction = runtime.executeSource("jrubyRackTask(resolvedRailsConfig, 'fixture_transaction');", script);
+        assertTrue(transaction.toString().contains("transaction rolled back"));
         assertThrows(
                 RuntimeException.class,
                 () -> runtime.executeSource("jrubyRackTask(railsConfig, 'fixture_failure');", script));
@@ -344,8 +428,8 @@ class InstalledHttpTest {
         String state = text(request("/ruby/state", "GET", new byte[0]));
         assertTrue(state.contains("second:true\",\"first:true"), state);
         var callable = request("/ruby/callable", "GET", new byte[0]);
-        assertEquals(500, callable.statusCode());
-        assertEquals("Internal server error", text(callable));
+        assertEquals(200, callable.statusCode());
+        assertEquals("callable", text(callable));
     }
 
     /**
@@ -453,6 +537,7 @@ class InstalledHttpTest {
         try {
             IStruct versions = (IStruct) status(first).get("versions");
             Object rackVersion = versions.get("rack");
+            assertEquals("3.2.7", rackVersion);
             versions.put("rack", "caller mutation");
             assertEquals(rackVersion, ((IStruct) status(first).get("versions")).get("rack"));
             var responses = new ArrayList<java.util.concurrent.CompletableFuture<HttpResponse<byte[]>>>();
@@ -659,4 +744,64 @@ class InstalledHttpTest {
             invoke(app, "close");
         }
     }
+    /**
+     * Exercises real HTML forms and framework CSRF middleware, uploads, assets, and Live/Sinatra streaming.
+     * @throws Exception if HTTP or fixture operations fail
+     */
+    @Test
+    void realFrameworkHtmlFormsAssetsUploadsAndStreaming() throws Exception {
+        for (String framework : List.of("sinatra", "rails")) {
+            String formPath = framework.equals("rails") ? "/rails/" : "/sinatra/form";
+            var form = request(formPath, "GET", new byte[0]);
+            assertEquals(200, form.statusCode(), text(form));
+            String cookie = form.headers().allValues("set-cookie").stream()
+                .map(value -> value.split(";", 2)[0]).collect(java.util.stream.Collectors.joining("; "));
+            var token = java.util.regex.Pattern.compile("name=\"authenticity_token\"[^>]*value=\"([^\"]+)\"").matcher(text(form));
+            assertTrue(token.find(), text(form));
+            String csrf = token.group(1);
+            String uploadCsrf = token.find() ? token.group(1) : csrf;
+            var bad = client.send(HttpRequest.newBuilder(URI.create(base + "/" + framework + "/form"))
+                .header("Cookie", cookie).header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString("text=forbidden")).build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(framework.equals("rails") ? 422 : 403, bad.statusCode(), text(bad));
+            var saved = client.send(HttpRequest.newBuilder(URI.create(base + "/" + framework + "/form"))
+                .header("Cookie", cookie).header("Content-Type", "application/x-www-form-urlencoded")
+                .POST(HttpRequest.BodyPublishers.ofString("text=html-note&authenticity_token=" + URLEncoder.encode(csrf, java.nio.charset.StandardCharsets.UTF_8)))
+                .build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(303, saved.statusCode(), text(saved));
+            assertTrue(saved.headers().firstValue("location").orElseThrow().contains("/ctx/" + framework));
+            String nextCookie = saved.headers().firstValue("set-cookie").map(value -> value.split(";", 2)[0]).orElse(cookie);
+            var shown = client.send(HttpRequest.newBuilder(URI.create(base + formPath)).header("Cookie", nextCookie).GET().build(),
+                HttpResponse.BodyHandlers.ofByteArray());
+            assertTrue(text(shown).contains("html-note"), text(shown));
+            String boundary = "bxFrameworkUpload";
+            String multipart = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"authenticity_token\"\r\n\r\n" + uploadCsrf
+                + "\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"upload\"; filename=\"sample.txt\"\r\nContent-Type: text/plain\r\n\r\nuploaded\r\n--" + boundary + "--\r\n";
+            var upload = client.send(HttpRequest.newBuilder(URI.create(base + "/" + framework + "/upload"))
+                .header("Cookie", cookie).header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofString(multipart)).build(), HttpResponse.BodyHandlers.ofByteArray());
+            assertEquals(200, upload.statusCode(), text(upload));
+            assertEquals("uploaded", text(upload));
+            String asset = framework.equals("rails") ? "example-6fb31f.css" : "example.css";
+            assertEquals(200, request("/" + framework + "/assets/" + asset, "GET", new byte[0]).statusCode());
+            var events = client.send(HttpRequest.newBuilder(URI.create(base + "/" + framework + "/events")).GET().build(),
+                HttpResponse.BodyHandlers.ofInputStream());
+            try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(events.body()))) {
+                assertEquals(200, events.statusCode());
+                assertEquals("data: 0", reader.readLine());
+                assertEquals("", reader.readLine());
+                assertEquals("data: 1", reader.readLine());
+                assertEquals("", reader.readLine());
+                assertNull(reader.readLine());
+            }
+        }
+        assertFalse(Files.exists(railsStreamClosed), "finite responses must not publish the disconnect marker");
+        var live = client.send(HttpRequest.newBuilder(URI.create(base + "/rails/events?infinite=1")).GET().build(),
+            HttpResponse.BodyHandlers.ofInputStream());
+        live.body().readNBytes(32);
+        live.body().close();
+        waitFor(() -> Files.exists(railsStreamClosed));
+        assertEquals("closed", Files.readString(railsStreamClosed));
+    }
+
 }

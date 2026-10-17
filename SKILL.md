@@ -1,6 +1,6 @@
 ---
 name: bx-jruby-rack
-description: "Use this skill when hosting Rack, Sinatra, or Rails applications in BoxLang with bx-jruby-rack: servlet gateway setup, scoped mounts, Bundler configuration, managed workers, application lifecycle, status, and explicit Rake tasks."
+description: "Use this skill when hosting Rack, Sinatra, or Rails applications in BoxLang with bx-jruby-rack: CommandBox startup, servlet gateway setup, streaming/SSE, scoped mounts, Bundler configuration, managed workers, lifecycle, status, and explicit Rake tasks."
 ---
 
 # bx-jruby-rack: Host Ruby Web Applications in BoxLang
@@ -18,13 +18,18 @@ install-bx-module bx-jruby-rack
 box install bx-jruby-rack
 ```
 
-Install into the module directory used by the servlet host. Copy the installed
+For CommandBox, copy the installed `examples/commandbox` directory into an app
+folder, then run `box install`, `box task run`, and `box server start`. The starter
+uses `app.libDirs`, explicit servlet mappings and `web.servletPassPredicate=true`
+so extensionless mounts reach the filter. See [deployment](docs/deployment.md).
+
+For generic Servlet hosts, install into their module directory. Copy the installed
 module's `gateway/` JAR into `WEB-INF/lib` and register
 `modules.bxjrubyrack.gateway.RackGateway` before BoxLang and body-parsing filters.
 Map it to `/*` for `REQUEST` dispatches. Keep BoxLang's ordinary extension
 mappings, such as `*.bxm`.
 
-For the complete `web.xml` example, read [README.md](https://github.com/tonyjunkes/bx-jruby-rack/README.md#install-and-configure-the-gateway).
+For the complete `web.xml` example, read [README.md](https://github.com/tonyjunkes/bx-jruby-rack/blob/main/README.md#install-and-configure-the-gateway).
 Set the filter's `boxlang-home` and `boxlang-config-path` to the same values as
 the BoxLang servlet. Each servlet context needs a unique fixed `scope`; the
 default is `default`. Scopes come from deployment configuration, not request
@@ -169,24 +174,34 @@ a downtime window. Measure the actual framework before increasing worker count.
 
 ## Response Profile and Troubleshooting
 
-Supported responses are finite synchronous Rack 3 enumerable bodies. Use a
+Supported responses are Rack 3 enumerable or callable bodies, including SSE. Use a
 mutable `[status, headers, body]` array, lowercase string header names, string
 or array header values, and string body chunks. Binary chunks preserve bytes.
 Repeated cookies use arrays. Transport framing belongs to the servlet host.
 Bodies close after success, failure, HEAD and bodyless responses;
 `rack.response_finished` callbacks run in reverse order.
 
-WebSockets, hijacking, callable streaming, upgrades, early hints, indefinite SSE,
+WebSockets, hijacking, upgrades, early hints, asynchronous multiplexing,
 dynamic pool resizing, and automatic Ruby reload are outside this profile.
 Configure trusted proxies and transport timeouts in the servlet host.
 
 Bridge failures return generic HTTP errors. Consult host logs for causes,
 backtraces and separately captured Ruby stdout/stderr. Captures are bounded to
-64 Ki characters per stream per operation and logged after completion, including
+64 Ki characters per stdout/stderr stream per operation and logged after completion, including
 failed operations; exit-handler output is logged separately. Output is batch
 capture rather than a live tail.
 
 When boot fails, check core activation, the gateway scope, physical app paths,
 JRuby-compatible gems, the lockfile, bundle location and framework environment.
+
+## Streaming (1.1.0)
+
+Each SSE/callable response holds one worker. Allocate extra workers or a dedicated
+mount for long-lived streams. Callable streams expose buffered reads and raw
+writes/flush/close; enumerable SSE chunks auto-flush. Track `status().streams`.
+Use `ensure` for producer cleanup, heartbeat writes and disabled proxy buffering.
+Drain rejects streaming I/O and waits for cleanup; Ruby that never returns or
+performs I/O can remain DRAINING. Read [deployment](docs/deployment.md) and
+[capabilities](docs/capabilities.md) before claiming another framework or protocol.
 The Rails example uses a public fixture secret and disables CSRF for test API
 requests; configure appropriate secrets and request protection in production.

@@ -21,7 +21,9 @@ final class ServletAdapter {
         HttpServletResponse response = (HttpServletResponse) rawResponse;
         String path = request.getRequestURI().substring(request.getContextPath().length());
         RackApp app = runtime.find(scope, path);
-        if (app == null) return false;
+        if (app == null) {
+            return false;
+        }
         try {
             app.dispatch(
                 new RackRequest(
@@ -39,7 +41,9 @@ final class ServletAdapter {
                 System.getLogger("bx-jruby-rack")
                     .log(System.Logger.Level.ERROR, "Rack request failed: " + app.config().id(), error);
 
-            if (response.isCommitted()) throw new IllegalStateException("Rack failed after response commitment", error);
+            if (response.isCommitted()) {
+                throw new IllegalStateException("Rack failed after response commitment", error);
+            }
             response.reset();
             int status = error instanceof RackException rack ? rack.getStatus() : 500;
             response.setStatus(status);

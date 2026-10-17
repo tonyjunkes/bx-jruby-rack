@@ -1,36 +1,68 @@
-# Local validation record
+# Candidate validation record
 
-Verified on Windows with Java 21 on 2026-10-09. See [compatibility](compatibility.md) for exact dependencies and the supported hosting profile.
+Windows verification, 2026-10-16–17, using Java 21 and the exact dependency matrix in
+[compatibility](compatibility.md). Core 1.1.0 and Rack 1.0.0 were already published;
+their release workflows passed Windows/Linux checks on 2026-10-10.
 
 | Check | Result |
 | --- | --- |
-| Core `gradlew build testBox` | 24 JUnit tests and 16 TestBox specifications passed; packaged consumers passed |
-| Rack `gradlew prepareFixtures` | Three independent frozen bundles installed successfully |
-| Rack `gradlew build` | 6 unit/dependency tests, 12 installed HTTP tests, CLI consumer and package checks passed |
-| Rack `gradlew testBox` | 4 public API specifications passed |
-| Rack `gradlew benchmark` | Local one-worker and two-worker observations completed |
+| Core build/testBox | 49 JUnit tests, 16 TestBox specifications, installed consumers, override/reload checks, Javadoc and interop example |
+| Rack build/testBox | 6 unit/dependency tests, 14 installed HTTP tests, 4 TestBox specifications, CLI and package checks |
+| PostgreSQL | Real PostgreSQL 17.11: migrations, CRUD, rollback, Rake tasks, HTML/CSRF/uploads and Rails Live cleanup |
+| CommandBox candidate startup | Extracted ZIPs: BoxLang page, Ruby page, SSE and 404 responses for source/config/module paths |
+| Package and source checks | Metadata/dependency pin, SHA-256 artifacts, Javadoc, workflow lint, skill YAML and agent-file content checks |
+| Performance | Repeated released/candidate core and Rack comparisons; see [performance](performance.md) |
 
-The HTTP checks use extracted distribution ZIPs with the core and Rack implementations absent from the host application classpath. They exercise actual Jetty requests, Rack::Lint, Sinatra routes and Rails database migration/persistence. They also cover admission limits, disconnect cleanup, malformed responses, root/context mounts, scope isolation and reloading core during an active request.
+Installed HTTP tests exclude core, JRuby and Rack implementation classes from the
+host classpath. The gateway is the only host-visible module JAR. CLI consumers exclude
+Servlet classes too. Native wrappers cover named/default arguments, caller-relative
+paths, inline component scope/early exit, unload/reload and descriptor ownership.
 
-Reports are generated under each repository's `build/reports/tests`; TestBox JSON reports are under `build/testbox`. Benchmark observations are written to `build/benchmark.json`. These generated files are intentionally excluded from source control.
+Core interop checks exercise copied input/ARGV, EOF, binary/invalid encoding round
+trips, symbols, temporal precision, handle ownership, Bundler conflicts/failure/retry,
+Ruby blocks with keywords, late/cross-thread/reentrant callbacks, standard libraries,
+Java interop and process-exit containment.
+Callback lifecycle checks cover all executable session overloads before locking,
+manager shutdown during successful/failing callbacks, and installed-module reload
+with an active callback and exactly-once exit handlers.
 
-After the formatting and test-layout changes, core `build` and Rack `build testBox` passed again. Rack now uses its own TestBox installation. All three Rack workflows passed `actionlint`. The release workflow's package preparation script also ran locally against the distribution, verifying the checksum, matching descriptors, module JAR and gateway JAR. An invalid release version was rejected by `verifyModuleMetadata`. GitHub tag/release creation and ForgeBox publication were not invoked.
+Real HTTP checks cover mounted paths, binary input/output, cookies, CSRF rejection,
+sessions, uploads, static assets, malformed responses, body limits, admission/timeout,
+reload, callable/enumerable precedence, first-event delivery before completion, HEAD,
+stream saturation, disconnect cleanup, cooperative drain and Rails producer cleanup.
+The Rails disconnect marker is unique per test run and published after its file is
+closed; finite streams cannot satisfy the disconnect assertion or race with its cleanup.
+Module archives and Ruby fixtures are explicit Gradle Test inputs so protocol changes
+cannot be skipped solely because implementation classes are absent from the host classpath.
 
-After the ForgeBox installation guide and Javadoc changes, both `build` tasks passed again: 23 core JUnit tests, 4 Rack unit/dependency tests, 10 Rack HTTP tests, packaged consumers and package checks. All 203 explicitly declared Java methods and constructors across production and test sources have Javadoc. Both builds validate public and private implementation Javadoc with doclint; an AST comparison confirmed the documentation edits preserved Java behavior. Rack's packaged dependency is pinned to core `1.1.0`, and metadata validation enforces that pin. ForgeBox installation instructions were checked against the BoxLang installer implementation; an actual remote installation remains a release gate.
+Reports are generated under `build/reports/tests`, `build/test-results` and
+`build/testbox`; performance observations are under `build/performance`. CommandBox
+smoke runs retain their setup/start/stop logs in `build/commandbox-smoke-*`.
 
-The final 1.0.0 review added regressions for captured-close admission, failed worker replacement, partial startup rollback, malformed configuration and reusable detached configuration snapshots. Both `build testBox` runs passed. The Rack agent skill and updated core skill passed the skill validator. Workflow lint passed for both repositories. Core tag `1.1.0` was absent from the upstream remote at review time; the paired release order remains a gate. Review fixes also retain failed Ruby captures in host logs and prevent status snapshots from exposing mutable internal version metadata.
+## Remaining external verification
 
-## Worker sizing observation
+The candidate's Windows/Linux CommandBox jobs and Linux PostgreSQL job run in the
+reusable checks workflow. The first PR run could not check out the unreleased core
+tag. A companion-core run also exposed a Windows installer archive mismatch and a
+transient Maven Central HTTP 403; workflow fixes and a fresh run address those separately.
+This Windows workspace has no installed WSL distribution.
 
-A warmed custom Rack fixture handled 80 requests at client concurrency 8. These short local runs are useful only as a starting point for measuring a real application.
+For paired core/Rack development, set the Rack repository variable
+`BX_JRUBY_PR_CORE_REF` to the reviewed companion core commit. Only PR checks read it;
+manual checks accept `core_ref`, and release checks keep the exact default tag.
+After core 1.2.0 is published, remove the variable and re-run Rack PR checks against
+the tag before merging. Neither override changes the package's exact dependency pin.
 
-| Workers | App boot | Requests/second | Process used heap after boot | Observed heap increase |
-| --- | --- | --- | --- | --- |
-| 1 | 763 ms | 338 | 219 MB | 26 MB |
-| 2 | 855 ms | 936 | 247 MB | 29 MB |
+Release core 1.2.0 first, run Rack against that tag, then publish Rack 1.1.0. Remote
+installation of these new ForgeBox versions must follow publication. Candidate ZIP
+installation and startup are verified locally; this work performs no publication.
 
-Heap readings use garbage-collection samples and include the shared test host and previously initialized modules. They are not isolated per-runtime memory guarantees. Boot figures use already installed bundles; throughput excludes startup and is not representative of Rails or production capacity. Measure the intended workload before selecting worker count, queue capacity and request limits.
+An actual CommandBox install of indexed core 1.1.0 failed because ForgeBox had no
+package binary location. Both candidate manifests now point at their versioned
+compiled GitHub release ZIPs. Metadata checks enforce the location, and release
+workflows upload assets before publishing ForgeBox metadata. Existing published
+metadata was not modified; repair it or publish these candidates before relying
+on that remote installation path.
 
-## Release gates
-
-This is a tested `1.0.0` implementation paired with unpublished core `1.1.0` changes. Linux CI, ForgeBox remote installation and CommandBox/Runwar hosting remain unverified. CI defaults to core tag `1.1.0`; manual checks can select a core ref containing the companion changes. Publish core before the first Rack release and configure the Rack repository's `FORGEBOX_API_TOKEN` secret. No releases or remote repository changes were made during local implementation.
+The original implementation specification remains historical. Current capability and
+compatibility documents describe this candidate rather than an unpublished 1.0.0.
